@@ -5,6 +5,7 @@ import numpy as np
 import argparse
 import imutils
 import cv2
+import time
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -18,6 +19,13 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 # Capture input from video
 cap = cv2.VideoCapture(args["videos"])
 
+# Number of people in previous frame
+previousFrame = 0
+# The number of people in the most recent frame that has been verified to not be a blip
+lastStableFrame = 0
+
+output="Event Type, Time\n"
+
 # loop over video image slices
 while (True):
     # Capture frame-by-frame
@@ -26,6 +34,9 @@ while (True):
         cap.grab()
 
     ret, frame = cap.read()
+
+    if not ret:
+        break
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -48,7 +59,17 @@ while (True):
     rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
     people = non_max_suppression(rects, probs=None, overlapThresh=0.65)
 
-    print("People found in frame: {} people".format(len(people)))
+    # check if the number of people in frame is the same for at least 2 consecutive frames
+    if len(people) == previousFrame and previousFrame != lastStableFrame:
+        if previousFrame > lastStableFrame:
+            eventType = "entrance"
+        else:
+            eventType = "exit"
+        for x in range(abs(previousFrame - lastStableFrame)):
+            print "Recorded an " + eventType
+            output += eventType.capitalize() + "," + str(time.time()) + "\n"
+        lastStableFrame = previousFrame
+    previousFrame = len(people)
 
     # draw the final bounding boxes
     for (xA, yA, xB, yB) in people:
@@ -68,3 +89,7 @@ while (True):
 
 cap.release()
 cv2.destroyAllWindows()
+
+csv = open("output.csv", "w")
+csv.write(output)
+csv.close()
