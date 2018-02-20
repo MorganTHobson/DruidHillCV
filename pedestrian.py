@@ -18,6 +18,9 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 # Capture input from video
 cap = cv2.VideoCapture(args["videos"])
 
+left_count = 0
+right_count = 0
+
 # loop over video image slices
 while (True):
     # Capture frame-by-frame
@@ -33,6 +36,8 @@ while (True):
     # and (2) improve detection accuracy
     image = imutils.resize(frame, width=min(400, frame.shape[1]))
     orig = image.copy()
+    height, width, channels = image.shape
+    mid = width/2
 
     # detect people in the image
     (rects, weights) = hog.detectMultiScale(image, winStride=(4, 4),
@@ -50,9 +55,22 @@ while (True):
 
     print("People found in frame: {} people".format(len(people)))
 
+    left_last = left_count
+    right_last = right_count
+    left_count = 0
+    right_count = 0
+
     # draw the final bounding boxes
     for (xA, yA, xB, yB) in people:
         cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
+        
+        if ((xA+xB)/2 <= mid):
+            left_count += 1
+        else:
+            right_count += 1
+
+    print("left frame: {}".format(left_count))
+    print("right frame: {}".format(right_count))
 
     # show some information on the number of bounding boxes
     # filename = args["videos"]
