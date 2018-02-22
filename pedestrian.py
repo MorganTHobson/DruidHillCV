@@ -72,6 +72,11 @@ while (True):
         else:
             right_count += 1
 
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    line_aa = cv2.LINE_AA  
+    cv2.putText(image,str(left_count),(0,40),font,1,(0,0,255),2,line_aa)
+    cv2.putText(image,str(right_count),(mid,40),font,1,(0,0,255),2,line_aa)
+
     print("left frame: {}".format(left_count))
     print("change in left: {}".format(left_count - left_last))
 
