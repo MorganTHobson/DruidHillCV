@@ -73,7 +73,10 @@ while (True):
             right_count += 1
 
     print("left frame: {}".format(left_count))
+    print("change in left: {}".format(left_count - left_last))
+
     print("right frame: {}".format(right_count))
+    print("change in right: {}".format(right_count - right_last))
 
     # show some information on the number of bounding boxes
     # filename = args["videos"]
