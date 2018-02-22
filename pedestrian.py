@@ -25,7 +25,7 @@ right_count = 0
 while (True):
     # Capture frame-by-frame
     # skip 20 frames
-    for i in range(20):
+    for i in range(4):
         cap.grab()
 
     ret, frame = cap.read()
@@ -59,6 +59,9 @@ while (True):
     right_last = right_count
     left_count = 0
     right_count = 0
+
+    # draw divider
+    cv2.line(image, (mid, 0), (mid, height), (255, 255, 0), 2)
 
     # draw the final bounding boxes
     for (xA, yA, xB, yB) in people:
