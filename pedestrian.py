@@ -18,11 +18,16 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 # Capture input from video
 cap = cv2.VideoCapture(args["videos"])
 
+# Track count intervals
+prev = 0
+log = [0,0,0,0]
+p = 0
+
 # loop over video image slices
 while (True):
     # Capture frame-by-frame
     # skip 20 frames
-    for i in range(20):
+    for i in range(5):
         cap.grab()
 
     ret, frame = cap.read()
@@ -49,6 +54,12 @@ while (True):
     people = non_max_suppression(rects, probs=None, overlapThresh=0.65)
 
     print("People found in frame: {} people".format(len(people)))
+
+    log[p] = len(people)
+    p = (p+1) % 4
+    if p == 0:
+        print("Max in range: {}".format(np.max(log)))
+        prev = np.max(log)
 
     # draw the final bounding boxes
     for (xA, yA, xB, yB) in people:
