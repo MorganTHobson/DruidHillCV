@@ -58,8 +58,10 @@ while (True):
     log[p] = len(people)
     p = (p+1) % 4
     if p == 0:
-        print("Max in range: {}".format(np.max(log)))
-        prev = np.max(log)
+        current = np.max(log)
+        print("Max in range: {}".format(current))
+        print("Flux: {}".format(current - prev))
+        prev = current
 
     # draw the final bounding boxes
     for (xA, yA, xB, yB) in people:
