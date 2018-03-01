@@ -20,15 +20,16 @@ cap = cv2.VideoCapture(args["videos"])
 
 # Track count intervals
 prev = 0
-log = [0,0,0,0]
+log = [0]*30
 p = 0
 
 # loop over video image slices
 while (True):
     # Capture frame-by-frame
     # skip 20 frames
-    for i in range(5):
-        cap.grab()
+    #for i in range(5):
+    #    cap.grab()
+    cap.grab()
 
     ret, frame = cap.read()
 
@@ -53,10 +54,10 @@ while (True):
     rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
     people = non_max_suppression(rects, probs=None, overlapThresh=0.65)
 
-    print("People found in frame: {} people".format(len(people)))
+    #print("People found in frame: {} people".format(len(people)))
 
     log[p] = len(people)
-    p = (p+1) % 4
+    p = (p+1) % 30
     if p == 0:
         current = np.max(log)
         print("Max in range: {}".format(current))
