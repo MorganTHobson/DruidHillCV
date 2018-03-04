@@ -18,9 +18,9 @@ hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
 # Capture input from video
-WEBURL = "http://devimages.apple.com/"
-VIDEO_URL = WEBURL + "iphone/samples/bipbop/bipbopall.m3u8"
-
+WEBURL = "https://stream-us1-alfa.dropcam.com/"
+VIDEO_URL = WEBURL + "nexus_aac/591b131879304cedbb64634cc754c7a2/chunklist_w861715763.m3u8"
+# chunklist_w1058160530.m3u8
 pipe = sp.Popen([ FFMPEG_BIN, "-i", VIDEO_URL,
            "-loglevel", "quiet", # no text output
            "-an",   # disable audio
@@ -33,15 +33,17 @@ pipe = sp.Popen([ FFMPEG_BIN, "-i", VIDEO_URL,
 while (True):
     # Capture frame-by-frame
     # skip 20 frames
-    #for i in range(20):
-    #    cap.grab()
 
     #ret, frame = cap.read()
-    raw_image = pipe.stdout.read(480*360*3)
+    #raw_image = pipe.stdout.read(1280*720*3)
+
+    # skip a few frames to speed up
+    for i in range(20):
+        raw_image = pipe.stdout.read(1280*720*3)
 
     # transform the byte read into a numpy array
     image =  np.fromstring(raw_image, dtype='uint8')
-    frame = image.reshape((360,480,3))
+    frame = image.reshape((720,1280,3))
 
     # throw away the data in the pipe's buffer.
     pipe.stdout.flush()
