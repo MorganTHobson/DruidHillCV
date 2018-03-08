@@ -132,7 +132,7 @@ pipe = sp.Popen([ FFMPEG_BIN, "-i", VIDEO_URL,
             "-vcodec", "rawvideo", "-"],
             stdin = sp.PIPE, stdout = sp.PIPE)
 
-SKIP_FRAMES = 10
+SKIP_FRAMES = 9
 
 # In[10]:
 
