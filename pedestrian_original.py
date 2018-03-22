@@ -5,12 +5,13 @@ import numpy as np
 import argparse
 import imutils
 import cv2
+
 import time
+import csv
 
 # define time format and output header -> TODO: add GPS LOCATION 
-output = "Time, Type, Entrance, Exit\n"
-time.struct_time(tm_year=2013, tm_mon=2, tm_mday=20, tm_hour=23, tm_min=27,
-                 tm_sec=36, tm_wday=2, tm_yday=51, tm_isdst=0)
+output = ["Time", "Type", "Direction", "Total"]
+#time.struct_time(tm_year=2014, tm_mon=2, tm_mday=20, tm_hour=23, tm_min=27, tm_sec=36, tm_wday=2, tm_yday=51, tm_isdst=0)
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -25,45 +26,56 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
 # Capture input from video
 cap = cv2.VideoCapture(args["videos"])
+#csv_output = open("output.csv", "w")
+entrance = True 
 
 # loop over video image slices
-while (True):
-    # Capture frame-by-frame
-    # skip frames to catch up with real time
-    for i in range(SKIP_FRAMES):
-        cap.grab()
+with open("output.csv", "w") as f:
+    writer = csv.writer(f, delimiter=',')
+    writer.writerow(output)
 
-    ret, frame = cap.read()
+    while (True):
+        # Capture frame-by-frame
+        # skip frames to catch up with real time
+        for i in range(SKIP_FRAMES):
+            cap.grab()
 
-    # prevent crashing - only continues if image is read
-    if not ret:
-        break
+        ret, frame = cap.read()
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # prevent crashing - only continues if image is read
+        if not ret:
+            break
 
-    # load the image and resize it to (1) reduce detection time
-    # and (2) improve detection accuracy
-    image = imutils.resize(frame, width=min(750, frame.shape[1]))
-    orig = image.copy()
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # detect people in the image
-    (rects, weights) = hog.detectMultiScale(image, winStride=(4, 4),
-        padding=(8, 8), scale=1.05)
+        # load the image and resize it to (1) reduce detection time
+        # and (2) improve detection accuracy
+        image = imutils.resize(frame, width=min(750, frame.shape[1]))
+        orig = image.copy()
 
-    # apply non-maxima suppression to the bounding boxes using a
-    # fairly large overlap threshold to try to maintain overlapping
-    # boxes that are still people
-    rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
-    people = non_max_suppression(rects, probs=None, overlapThresh=0.65)
+        # detect people in the image
+        (rects, weights) = hog.detectMultiScale(image, winStride=(4, 4),
+            padding=(8, 8), scale=1.05)
 
-    print("People found in frame: {} people".format(len(people)))
+        # apply non-maxima suppression to the bounding boxes using a
+        # fairly large overlap threshold to try to maintain overlapping
+        # boxes that are still people
+        rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in rects])
+        people = non_max_suppression(rects, probs=None, overlapThresh=0.65)
 
-    current_time = time.localtime()
+        #print("People found in frame: {} people".format(len(people)))
+        #writer = csv.writer(f, delimiter=',')
+        #print("here!", time.localtime())
 
+        local_time = time.localtime()
+        timeString  = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
 
-    # draw the final bounding boxes
-    for (xA, yA, xB, yB) in people:
-        cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
+        newrow = [timeString, "Pedestrian", entrance, len(people)]
+        writer.writerow(newrow)
+
+        # draw the final bounding boxes
+        for (xA, yA, xB, yB) in people:
+            cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
 
     # show some information on the number of bounding boxes
     # filename = args["videos"]
@@ -72,15 +84,13 @@ while (True):
 
     # show the output images
     # cv2.imshow("Before NMS", orig)
-    cv2.imshow("Object Detection via IMUTILS", image)
+        cv2.imshow("Object Detection via IMUTILS", image)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 cap.release()
 cv2.destroyAllWindows()
 
 # write to csv
-csv = open("output.csv", "w")
-csv.write(output)
-csv.close()
+#csv.close()
