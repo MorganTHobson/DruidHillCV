@@ -13,6 +13,8 @@ from io import StringIO
 from PIL import Image
 
 import cv2
+import time
+import csv
 
 # This is needed since the notebook is stored in the object_detection folder.
 sys.path.append("..")
@@ -24,7 +26,6 @@ sys.path.append("..")
 # In[3]:
 
 from object_detection.utils import label_map_util
-
 from object_detection.utils import visualization_utils as vis_util
 
 
@@ -112,6 +113,8 @@ TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, 'image{}.jpg'.format(
 # Size, in inches, of the output images.
 IMAGE_SIZE = (12, 8)
 SKIP_FRAMES = 10
+output_format = ["Time", "Type", "Direction", "Total"]
+output_file = "tensor_output.csv"
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-i", "--videos", required=True, help="video to analyze")
@@ -120,40 +123,60 @@ args = vars(ap.parse_args())
 # capture input from video
 cap = cv2.VideoCapture(args["videos"])
 
+# temporary
+direction = True
+
 # In[10]:
 
 with detection_graph.as_default():
   with tf.Session(graph=detection_graph) as sess:
-    while True:
+    with open(output_file, "w") as f:
+      writer = csv.writer(f, delimiter=',')
+
+      while True:
       
-      for i in range(SKIP_FRAMES):
-        ret, image_np = cap.read()
+        for i in range(SKIP_FRAMES):
+          ret, image_np = cap.read()
 
-      # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-      image_np_expanded = np.expand_dims(image_np, axis=0)
-      image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
-      # Each box represents a part of the image where a particular object was detected.
-      boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
-      # Each score represent how level of confidence for each of the objects.
-      # Score is shown on the result image, together with the class label.
-      scores = detection_graph.get_tensor_by_name('detection_scores:0')
-      classes = detection_graph.get_tensor_by_name('detection_classes:0')
-      num_detections = detection_graph.get_tensor_by_name('num_detections:0')
-      # Actual detection.
-      (boxes, scores, classes, num_detections) = sess.run(
-          [boxes, scores, classes, num_detections],
-          feed_dict={image_tensor: image_np_expanded})
-      # Visualization of the results of a detection.
-      vis_util.visualize_boxes_and_labels_on_image_array(
-          image_np,
-          np.squeeze(boxes),
-          np.squeeze(classes).astype(np.int32),
-          np.squeeze(scores),
-          category_index,
-          use_normalized_coordinates=True,
-          line_thickness=8)
+        # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+        image_np_expanded = np.expand_dims(image_np, axis=0)
+        image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
 
-      cv2.imshow('object detection', cv2.resize(image_np, (800,600)))
-      if cv2.waitKey(25) & 0xFF == ord('q'):
-        cv2.destroyAllWindows()
-        break
+        # Each box represents a part of the image where a particular object was detected.
+        boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+
+        # Each score represent how level of confidence for each of the objects.
+        # Score is shown on the result image, together with the class label.
+        scores = detection_graph.get_tensor_by_name('detection_scores:0')
+        classes = detection_graph.get_tensor_by_name('detection_classes:0')
+        num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+
+        # Actual detection.
+        (boxes, scores, classes, num_detections) = sess.run(
+            [boxes, scores, classes, num_detections],
+            feed_dict={image_tensor: image_np_expanded})
+
+        # Visualization of the results of a detection.
+        vis_util.visualize_boxes_and_labels_on_image_array(
+            image_np,
+            np.squeeze(boxes),
+            np.squeeze(classes).astype(np.int32),
+            np.squeeze(scores),
+            category_index,
+            use_normalized_coordinates=True,
+            line_thickness=8)
+
+        cv2.imshow('TensorFlow Library Object Detection', cv2.resize(image_np, (800,600)))
+
+        # local time parsing
+        local_time = time.localtime()
+        time_string = time.strftime("%Y-%m-%d %H:%M:%S EST", local_time)
+        print(image_np, category_index, len(classes))
+        # write data to csv
+        newrow = [time_string, "Pedestrian", direction, boxes]
+        writer.writerow(newrow)
+
+        # prevent crashing
+        if cv2.waitKey(25) & 0xFF == ord('q'):
+          cv2.destroyAllWindows()
+          break
