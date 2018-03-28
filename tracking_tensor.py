@@ -143,17 +143,24 @@ if __name__ == '__main__' :
         print('Cannot read video file')
         sys.exit()
 
-    bbox = (0,0,0,0)
-    box = ()
+    # initialize bbox for use outside loop
+    bbox = (0,0,0,0) # x y w h
+    min_score_thresh = 0.5 #TODO: init better
+
+    # initialize final image size
+    IM_WIDTH = 900
+    IM_HEIGHT = 600
 
     # Define an initial bounding box through detection
     # TensorFlow Object Detection Model use (online training)
-    with detection_graph.as_default():
-         with tf.Session(graph=detection_graph) as sess:
-            with open(output_file, "w") as f:
-                writer = csv.writer(f, delimiter=',')
+    with open(output_file, "w") as f:
+        writer = csv.writer(f, delimiter=',')
 
-                while box is ():
+        # initial detection
+        with detection_graph.as_default():
+            with tf.Session(graph=detection_graph) as sess:
+
+                while True:
                     print("entered")
                     # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
                     image_np_expanded = np.expand_dims(frame, axis=0)
@@ -173,17 +180,27 @@ if __name__ == '__main__' :
                         [boxes, scores, classes, num_detections],
                         feed_dict={image_tensor: image_np_expanded})
 
-                    if boxes.shape[0] is not 0:
-                        print(boxes[0][0])
-                        #print(boxes[0].tolist())
-                        ymin, xmin, ymax, xmax = boxes[0][0]
-                        bbox = (ymin, xmin, ymax, xmax) # normalized values, must unnormalize
+                    # if an object has been detected, then boxes will have a nonzero row value
+                    boxes_squeezed = np.squeeze(boxes)
+                    if boxes_squeezed.shape[0] is not 0:
+                        scores = np.squeeze(scores)
+
+                        print(boxes_squeezed.shape)
+
+                        # for now, just grabbing first valid detection above confidence of min_score_thresh
+                        for i in range(boxes_squeezed.shape[0]):
+                            if scores is None or scores[i] > min_score_thresh:
+                                ymin, xmin, ymax, xmax = tuple(boxes_squeezed[i].tolist())
+                                break
+
+                        #bbox = (ymin*IM_HEIGHT, xmin*IM_WIDTH, ymax*IM_HEIGHT, xmax*IM_WIDTH) # values are normalized from 0 to 1, must unnormalize
+                        print(ymin, xmin, ymax, xmax)
+                        bbox = (xmin*IM_WIDTH, ymin*IM_HEIGHT, (xmax - xmin)*IM_WIDTH, (ymax - ymin)*IM_HEIGHT) 
+                        print(bbox)
                         break
 
-    frame = cv2.resize(frame, (900,600))
- 
-    # Uncomment the line below to select a different bounding box
-    # bbox = cv2.selectROI(frame, False)
+    # resize for display 
+    frame = cv2.resize(frame, (IM_WIDTH, IM_HEIGHT))
  
     # Initialize tracker with first frame and bounding box
     ok = tracker.init(frame, bbox)
@@ -195,7 +212,7 @@ if __name__ == '__main__' :
             break
 
         # resize frame to view better
-        frame = cv2.resize(frame, (900,600))
+        frame = cv2.resize(frame, (IM_WIDTH, IM_HEIGHT))
 
         # Start timer
         timer = cv2.getTickCount()
