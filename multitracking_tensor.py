@@ -166,7 +166,7 @@ def create_tracker(frame, bbox):
 
 def is_match(newbox_size, currbox_size, newbox_center, currbox_center):
     SIZE_THRESHOLD = 0.05 # at least within 5% of its size
-    CENTER_THRESHOLD = 0.1 # currbox_center[0]*0.05 + currbox_center[1]*0.05
+    CENTER_THRESHOLD = 0.15 # currbox_center[0]*0.05 + currbox_center[1]*0.05
 
     sim_size = False
     sim_center = False
