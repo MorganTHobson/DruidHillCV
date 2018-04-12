@@ -44,7 +44,7 @@ DOWNLOAD_BASE = 'http://download.tensorflow.org/models/object_detection/'
 PATH_TO_CKPT = MODEL_NAME + '/frozen_inference_graph.pb'
 
 # List of the strings that is used to add correct label for each box.
-PATH_TO_LABELS = os.path.join('/usr/local/lib/python3.6/site-packages/tensorflow/models/research/object_detection/data', 'mscoco_label_map.pbtxt')
+PATH_TO_LABELS = os.path.join('/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/tensorflow/research/object_detection/data', 'mscoco_label_map.pbtxt')
 print(PATH_TO_LABELS)
 NUM_CLASSES = 90
 
@@ -193,6 +193,10 @@ def is_match(newbox_size, currbox_size, newbox_center, currbox_center):
     else:
         return False
 
+def subtractBackground(frame):
+    fgmask = cv2.cvtColor(fgbg.apply(frame),cv2.COLOR_GRAY2RGB)
+    return (255 - frame) * fgmask
+
 if __name__ == '__main__' :
 
     # # TRACKER SETUP=============================================================
@@ -235,6 +239,9 @@ if __name__ == '__main__' :
     frame = []
     bboxes = []
 
+    # Initialize background subtraction
+    fgbg = cv2.bgsegm.createBackgroundSubtractorMOG()
+
     # detect first bbox
     print("Starting Initial Detection...")
     while not detection_found:
@@ -269,6 +276,7 @@ if __name__ == '__main__' :
 
         # resize frame to view better
         frame = cv2.resize(frame, (IM_WIDTH, IM_HEIGHT))
+        frame = subtractBackground(frame)
 
         # TODO: every so often should run detection TOUGH PART. SIGH.
         if frame_num % DETECTION_CYCLE == 0:
@@ -279,6 +287,7 @@ if __name__ == '__main__' :
                 print('Cannot read video file')
                 sys.exit()
             frame = cv2.resize(frame, (IM_WIDTH, IM_HEIGHT))
+            frame = subtractBackground(frame)
 
             # get the valid detection's bounding boxes
             detection_found, bboxes = detect_and_get_bboxes(frame)
