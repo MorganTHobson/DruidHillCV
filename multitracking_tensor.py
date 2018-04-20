@@ -86,58 +86,55 @@ def detect_and_get_bboxes(frame):
 
     # Define an initial bounding box through detection
     # Using TensorFlow Object Detection Model
-    with open(output_file, "w") as f:
-        writer = csv.writer(f, delimiter=',')
+    # initial detection
 
-        # initial detection
-        with detection_graph.as_default():
-            with tf.Session(graph=detection_graph) as sess:
+    # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+    image_np_expanded = np.expand_dims(frame, axis=0)
+    image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
 
-                while True:
-                    # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-                    image_np_expanded = np.expand_dims(frame, axis=0)
-                    image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
+    # Each box represents a part of the image where a particular object was detected.
+    boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
 
-                    # Each box represents a part of the image where a particular object was detected.
-                    boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+    # Each score represents how level of confidence for each of the objects.
+    # Score is shown on the result image, together with the class label.
+    scores = detection_graph.get_tensor_by_name('detection_scores:0')
+    classes = detection_graph.get_tensor_by_name('detection_classes:0')
+    num_detections = detection_graph.get_tensor_by_name('num_detections:0')
 
-                    # Each score represents how level of confidence for each of the objects.
-                    # Score is shown on the result image, together with the class label.
-                    scores = detection_graph.get_tensor_by_name('detection_scores:0')
-                    classes = detection_graph.get_tensor_by_name('detection_classes:0')
-                    num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+    # Actual detection.
+    (boxes, scores, classes, num_detections) = sess.run(
+        [boxes, scores, classes, num_detections],
+        feed_dict={image_tensor: image_np_expanded})
 
-                    # Actual detection.
-                    (boxes, scores, classes, num_detections) = sess.run(
-                        [boxes, scores, classes, num_detections],
-                        feed_dict={image_tensor: image_np_expanded})
+    # if an object has been detected, then boxes will have a nonzero row value
+    boxes_squeezed = boxes[0]
+    if boxes_squeezed.shape[0] is not 0:
+        scores_squeezed = scores[0]
+        classes_squeezed = classes[0]
+        eligible_exists = False
 
-                    # if an object has been detected, then boxes will have a nonzero row value
-                    boxes_squeezed = np.squeeze(boxes)
-                    if boxes_squeezed.shape[0] is not 0:
-                        scores = np.squeeze(scores)
-                        eligible_exists = False
+        # grabbing all valid detection above confidence of min_score_thresh bboxes
+        for i in range(boxes_squeezed.shape[0]):
+            if scores_squeezed[i] < min_score_thresh:
+                break
+            if classes_squeezed[i] == 1:
+                ymin, xmin, ymax, xmax = tuple(boxes_squeezed[i].tolist()) # values are normalized from 0 to 1
+                #print("Detected Box Normalized Coordinates:", ymin, xmin, ymax, xmax)
+                bbox = (xmin*IM_WIDTH, ymin*IM_HEIGHT, (xmax - xmin)*IM_WIDTH, (ymax - ymin)*IM_HEIGHT) # bbox format: (x, y, w, h)
+                #print("Final Bounding Box (x,y,w,h):", bbox)
 
-                        # grabbing all valid detection above confidence of min_score_thresh bboxes
-                        for i in range(boxes_squeezed.shape[0]):
-                            if scores is None or scores[i] > min_score_thresh:
-                                ymin, xmin, ymax, xmax = tuple(boxes_squeezed[i].tolist()) # values are normalized from 0 to 1
-                                #print("Detected Box Normalized Coordinates:", ymin, xmin, ymax, xmax)
-                                bbox = (xmin*IM_WIDTH, ymin*IM_HEIGHT, (xmax - xmin)*IM_WIDTH, (ymax - ymin)*IM_HEIGHT) # bbox format: (x, y, w, h)
-                                #print("Final Bounding Box (x,y,w,h):", bbox)
+                bboxes.append(bbox)
+                eligible_exists = True
 
-                                bboxes.append(bbox)
-                                eligible_exists = True
+        if not eligible_exists:
+            print("Failed to find accurate enough detections. Moving onto next frame.")
+            return (False, bboxes)
 
-                        if not eligible_exists:
-                            print("Failed to find accurate enough detections. Moving onto next frame.")
-                            return (False, bboxes)
-
-                        print("Number of valid bboxes found:", len(bboxes))
-                        return (True, bboxes)
-                    else:
-                        print("Failed to detect any objects. Moving onto next frame.")
-                        return (False, bboxes)
+        print("Number of valid bboxes found:", len(bboxes))
+        return (True, bboxes)
+    else:
+        print("Failed to detect any objects. Moving onto next frame.")
+        return (False, bboxes)
 
 # TODO: you could give these IDs using a dict.
 updates = {}
@@ -202,6 +199,9 @@ if __name__ == '__main__' :
     tracker_type = tracker_types[2]
 
     # # DETECTION ================================================================
+
+    detection_graph.as_default()
+    sess = tf.Session(graph=detection_graph)
 
     # setup commandline argument parsing for input video
     ap = argparse.ArgumentParser()
