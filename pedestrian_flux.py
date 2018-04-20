@@ -37,7 +37,7 @@ while (True):
 
     # load the image and resize it to (1) reduce detection time
     # and (2) improve detection accuracy
-    image = imutils.resize(frame, width=min(1000, frame.shape[1]))
+    image = imutils.resize(frame, width=min(1500, frame.shape[1]))
     orig = image.copy()
 
     # detect people in the image

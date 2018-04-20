@@ -66,7 +66,7 @@ while (True):
         else:
             eventType = "exit"
         for x in range(abs(previousFrame - lastStableFrame)):
-            print "Recorded an " + eventType
+            print("Recorded an " + eventType)
             output += eventType.capitalize() + "," + str(time.time()) + "\n"
         lastStableFrame = previousFrame
     previousFrame = len(people)

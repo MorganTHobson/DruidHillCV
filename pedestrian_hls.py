@@ -11,6 +11,7 @@ import cv2
 # ap = argparse.ArgumentParser()
 # ap.add_argument("-i", "--videos", required=True, help="video to analyze")
 # args = vars(ap.parse_args())
+
 FFMPEG_BIN = "ffmpeg"
 
 # initialize the HOG descriptor/person detector
@@ -20,7 +21,12 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 # Capture input from video
 WEBURL = "https://stream-us1-alfa.dropcam.com/"
 VIDEO_URL = WEBURL + "nexus_aac/591b131879304cedbb64634cc754c7a2/chunklist_w861715763.m3u8"
-# chunklist_w1058160530.m3u8
+
+# Store m3u8 dimensions
+VIDEO_X = 1280
+VIDEO_Y = 720
+BPP = 3 # bytes per pixel - current 3 byte RGB
+
 pipe = sp.Popen([ FFMPEG_BIN, "-i", VIDEO_URL,
            "-loglevel", "quiet", # no text output
            "-an",   # disable audio
@@ -31,19 +37,15 @@ pipe = sp.Popen([ FFMPEG_BIN, "-i", VIDEO_URL,
 
 # loop over video image slices
 while (True):
-    # Capture frame-by-frame
-    # skip 20 frames
-
-    #ret, frame = cap.read()
     #raw_image = pipe.stdout.read(1280*720*3)
 
     # skip a few frames to speed up
-    for i in range(20):
-        raw_image = pipe.stdout.read(1280*720*3)
+    for i in range(10):
+        raw_image = pipe.stdout.read(VIDEO_X*VIDEO_Y*BPP)
 
     # transform the byte read into a numpy array
     image =  np.fromstring(raw_image, dtype='uint8')
-    frame = image.reshape((720,1280,3))
+    frame = image.reshape((VIDEO_Y, VIDEO_X, BPP))
 
     # throw away the data in the pipe's buffer.
     pipe.stdout.flush()
@@ -52,7 +54,7 @@ while (True):
     # load the image and resize it to (1) reduce detection time
     # and (2) improve detection accuracy
     image = imutils.resize(frame, width=min(1000, frame.shape[1]))
-    orig = image.copy()
+    # orig = image.copy()
 
     # detect people in the image
     (rects, weights) = hog.detectMultiScale(image, winStride=(4, 4),

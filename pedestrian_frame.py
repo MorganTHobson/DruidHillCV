@@ -37,7 +37,7 @@ while (True):
     image = imutils.resize(frame, width=min(1000, frame.shape[1]))
     orig = image.copy()
     height, width, channels = image.shape
-    mid = width/2
+    mid = int(width/2)
 
     # detect people in the image
     (rects, weights) = hog.detectMultiScale(image, winStride=(4, 4),
@@ -64,7 +64,7 @@ while (True):
     cv2.line(image, (mid, 0), (mid, height), (255, 255, 0), 2)
 
     # draw the final bounding boxes
-    for (xA, yA, xB, yB) in people:
+    for xA, yA, xB, yB in people:
         cv2.rectangle(image, (xA, yA), (xB, yB), (0, 255, 0), 2)
         
         if ((xA+xB)/2 <= mid):
