@@ -126,9 +126,7 @@ def detect_and_get_bboxes(frame):
                 break
             if classes_squeezed[i] == 1:
                 ymin, xmin, ymax, xmax = tuple(boxes_squeezed[i].tolist()) # values are normalized from 0 to 1
-                #print("Detected Box Normalized Coordinates:", ymin, xmin, ymax, xmax)
                 bbox = (xmin*IM_WIDTH, ymin*IM_HEIGHT, (xmax - xmin)*IM_WIDTH, (ymax - ymin)*IM_HEIGHT) # bbox format: (x, y, w, h)
-                #print("Final Bounding Box (x,y,w,h):", bbox)
 
                 bboxes.append(bbox)
                 eligible_exists = True
@@ -146,10 +144,6 @@ def detect_and_get_bboxes(frame):
 # TODO: you could give these IDs using a dict.
 updates = {}
 def create_tracker(frame, bbox):
-    # require use of OpenCV 3.3 or above
-    #if int(minor_ver) < 3:
-    #    tracker = cv2.Tracker_create(tracker_type)
-    #else:
 
     # bleh, write better code: tracker_type global
 
@@ -300,9 +294,8 @@ if __name__ == '__main__' :
                 if detection_found:
                     for newbox in bboxes:
                         # see if the bbox is already being tracked
-                        # IDEA: check overlap ratio (harder)
+                        # IDEA: Hungarian Algorithm
 
-                        # IDEA: check center and check size. if both are similar enough, then call it the same and dont create a new tracker for it
                         xmin, ymin, width, height = newbox[:]
                         newbox_size = width * height
                         newbox_center = (xmin + width/2, ymin + height/2)
@@ -350,10 +343,6 @@ if __name__ == '__main__' :
                     # Tracking failure
                     cv2.putText(frame, "Tracking failure detected", (100,80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2)
                     failed_trackers.append(tracker)
-
-                    # remove tracker that used to be tracking that bounding box
-                    #multitracker.remove(tracker)
-                    #print(">>> TRACKING FAILURE OCCURRED! Number of trackers after removal:", len(multitracker))
 
             print("Original Number of Trackers:", len(multitracker))
             fail_count = len(failed_trackers)
