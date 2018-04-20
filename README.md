@@ -13,7 +13,7 @@ In addition, the main driver API utilized was OpenCV 3.4.0. This provided our vi
 
 The GUI was created using TKinter for easier use of the program by non-programmers who simply seek to load a video and run analysis for data collection.
 
-The live video stream that was used for testing is an HLS feed taken from a live Google Nest camera, placed near Druid Hill Park. Testing was also done on recorded video from smartphone cameras.
+The live video stream that was used for testing is an HLS feed taken from a live Google Nest Cam Outdoor, placed near Druid Hill Park. Testing was also done on recorded video from smartphone cameras.
 
 ## Features and Performance
 Coming soon.
