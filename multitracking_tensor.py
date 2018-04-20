@@ -204,8 +204,6 @@ def get_assignments(tracker_centers, detection_centers, m):
             row.append(math.sqrt(delta_x*delta_x + delta_y*delta_y))
         matrix.append(row)
 
-    print(matrix)
-
     indexes = m.compute(matrix)
     return indexes
 
@@ -304,6 +302,7 @@ if __name__ == '__main__' :
             detection_centers = []
             tracker_centers = []
 
+            # get indexes of associated boxes
             indexes = []
             if (len(current_boxes) != 0 and len(bboxes) != 0):
                 # generate centers
@@ -342,35 +341,6 @@ if __name__ == '__main__' :
                     multitracker.append(create_tracker(frame, bboxes[i]))
                     print("Box added: " + str(i))
 
-            '''
-            if detection_found:
-                for newbox in bboxes:
-                    # see if the bbox is already being tracked
-                    # IDEA: check overlap ratio (harder)
-
-                    # IDEA: check center and check size. if both are similar enough, then call it the same and dont create a new tracker for it
-                    xmin, ymin, width, height = newbox[:]
-                    newbox_size = width * height
-                    newbox_center = (xmin + width/2, ymin + height/2)
-
-                    # check against each existing box to see if same object
-                    match = False
-                    for tracker, box in current_boxes:
-                        xmin_curr, ymin_curr, w_curr, h_curr = box[:]
-                        currbox_size = w_curr * h_curr
-                        currbox_center = (xmin_curr + w_curr/2, ymin_curr + h_curr/2)
-
-                        match = is_match(newbox_size, currbox_size, newbox_center, currbox_center)
-                        if match:
-                            print("MATCH - Object already being tracked. Moving onto next newly detected box.")
-                            break
-
-                    if not match:
-                        print("Object newly detected. Adding to multitracker!")
-                        ok = multitracker.append(create_tracker(frame, newbox)) # how to append only new bounding boxes? IDs? currently just removing and appending all
-
-                    print("Number of trackers after re-detection:", len(multitracker))
-            '''
 
         # Start timer
         timer = cv2.getTickCount()
