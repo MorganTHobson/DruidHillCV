@@ -1,6 +1,4 @@
-# DruidHillCV
-
-Pedestrian Detection for Druid Hill Park<br />
+# Pedestrian Detection Project for Druid Hill Park
 Jeesoo Kim, Morgan Hobson, Kavya Tumkur, Aidan Smith<br />
 
 ## Objective
@@ -14,12 +12,15 @@ We use a variety of libraries in this software. The main object detection and tr
 In addition, the main driver API utilized was OpenCV 3.4.0. This provided our video reading functions and created the framework in which we could incorporate object detection and tracking.
 
 ## Features
-
+Coming soon.
 
 ## Installation
-
+Detailed instructions coming soon.
 
 ## Credits
 This project was developed for the project course 601.310 Software for Resilient Communities, led by Professor Yair Amir and (soon to be Dr.) Amy Babay at Johns Hopkins University. Much thanks to both for the guidance and advice towards creating a better project and inspiring us to constantly strive for nothing less than our highest potential. <br />
 
 Partners for the project also included Jacob Green of Spread Concepts LLC, and the nonprofit Parks and People Foundation of Baltimore, particularly Valerie Rupp. Special thanks to Austin Reiter for helping with field advice and general guidance.
+
+## Additional Information
+Visit our project website here: http://www.dsn.jhu.edu/courses/cs310/baltimore/
