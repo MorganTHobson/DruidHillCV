@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import os
 import six.moves.urllib as urllib
 import sys
@@ -7,7 +8,7 @@ import tensorflow as tf
 import zipfile
 import argparse
 import collections
-
+from munkres import Munkres
 
 from collections import defaultdict
 from io import StringIO
@@ -44,7 +45,7 @@ DOWNLOAD_BASE = 'http://download.tensorflow.org/models/object_detection/'
 PATH_TO_CKPT = MODEL_NAME + '/frozen_inference_graph.pb'
 
 # List of the strings that is used to add correct label for each box.
-PATH_TO_LABELS = os.path.join('/usr/local/lib/python3.6/site-packages/tensorflow/models/research/object_detection/data', 'mscoco_label_map.pbtxt')
+PATH_TO_LABELS = os.path.join('/home/Hex/ResilientCommunities/tensorflow/models/research/object_detection/data', 'mscoco_label_map.pbtxt')
 print(PATH_TO_LABELS)
 NUM_CLASSES = 90
 
@@ -191,7 +192,27 @@ def is_match(newbox_size, currbox_size, newbox_center, currbox_center):
     else:
         return False
 
+def get_assignments(tracker_centers, detection_centers, m):
+    matrix = []
+    
+    # Generate distance matrix trackers=rows detections=column
+    for tx,ty in tracker_centers:
+        row = []
+        for dx,dy in detection_centers:
+            delta_x = dx - tx
+            delta_y = dy - ty
+            row.append(math.sqrt(delta_x*delta_x + delta_y*delta_y))
+        matrix.append(row)
+
+    print(matrix)
+
+    indexes = m.compute(matrix)
+    return indexes
+
 if __name__ == '__main__' :
+
+    # Hungarian Algorithm object
+    m = Munkres()
 
     # # TRACKER SETUP=============================================================
 
@@ -211,7 +232,7 @@ if __name__ == '__main__' :
 
     IM_WIDTH = 950
     IM_HEIGHT = 600
-    DETECTION_CYCLE = 50 # how often to run the detection algo
+    DETECTION_CYCLE = 10 # how often to run the detection algo
 
     # setup output CSV format and file name globals
     output_format = ["Time", "Type", "Direction", "Total"]
@@ -280,6 +301,48 @@ if __name__ == '__main__' :
             # get the valid detection's bounding boxes
             detection_found, bboxes = detect_and_get_bboxes(frame)
 
+            detection_centers = []
+            tracker_centers = []
+
+            indexes = []
+            if (len(current_boxes) != 0 and len(bboxes) != 0):
+                # generate centers
+                for newbox in bboxes:
+                    xmin, ymin, width, height = newbox[:]
+                    center = (xmin + width/2, ymin + height/2)
+                    detection_centers.append(center)
+                for tracker,box in current_boxes:
+                    xmin, ymin, width, height = box[:]
+                    center = (xmin + width/2, ymin + height/2)
+                    tracker_centers.append(center)
+                indexes = get_assignments(tracker_centers, detection_centers, m)
+
+            # the indexes of the matched pairs
+            valid_trackers = []
+            valid_detections = []
+            data_remove = []
+
+            for t,d in indexes:
+                valid_trackers.append(t)
+                valid_detections.append(d)
+
+            # remove all unmatched trackers
+            for i in range(0,len(current_boxes)):
+                if i not in valid_trackers:
+                    data_remove.append(i)
+
+            for i in reversed(data_remove):
+                multitracker.remove(current_boxes[i][0])
+                current_boxes.remove(current_boxes[i])
+                print("Tracker " + str(i) + " removed")
+
+            # add all unmatched detections
+            for i in range(0,len(bboxes)):
+                if i not in valid_detections:
+                    multitracker.append(create_tracker(frame, bboxes[i]))
+                    print("Box added: " + str(i))
+
+            '''
             if detection_found:
                 for newbox in bboxes:
                     # see if the bbox is already being tracked
@@ -307,6 +370,7 @@ if __name__ == '__main__' :
                         ok = multitracker.append(create_tracker(frame, newbox)) # how to append only new bounding boxes? IDs? currently just removing and appending all
 
                     print("Number of trackers after re-detection:", len(multitracker))
+            '''
 
         # Start timer
         timer = cv2.getTickCount()
