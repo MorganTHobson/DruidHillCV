@@ -30,6 +30,14 @@ sys.path.append("..")
 output_format = ["Time", "Type", "Direction", "Total"]
 output_file = "tensor_output.csv"
 
+# Constant declarations
+IM_WIDTH = 950
+IM_HEIGHT = 600
+DETECTION_CYCLE = 20 # how often to run the detection algo
+MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
+TRACKING_BUFFER = 20
+DEFAULT_STREAM = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
+
 # # TENSORFLOW OBJECT DETECTION MODEL PREPARATION (ONLINE TRAINING) =======================================================
 
 # ## Variables
@@ -128,6 +136,25 @@ def detect_and_get_bboxes(frame):
         print("Failed to detect any objects. Moving onto next frame.")
         return (False, bboxes)
 
+def writeCSV(prev_time):
+    # WRITING TO CSV ================== MAKE SEPARATE FUNCTION
+    current_time = time.time()
+    # every 3ish seconds write to csv
+    if current_time - prev_time > 3:
+        # local time parsing
+        local_time = time.localtime()
+        time_string = time.strftime("%Y-%m-%d %H:%M:%S EST", local_time)
+
+        # write data to csv
+        newrow = [time_string, "Pedestrian", direction, str(counter)]
+        writer.writerow(newrow)
+        f.flush()
+
+        # update previous time
+        prev_time = current_time
+
+    return prev_time
+
 updates = {}
 def create_tracker(frame, bbox):
 
@@ -188,17 +215,9 @@ if __name__ == '__main__' :
     args = vars(ap.parse_args())
 
     # if video is given, use as input, or if video isn't given, default to live stream
-    in_file = ""
+    in_file = DEFAULT_STREAM
     if args["input"]:
         in_file = args["input"]
-    else:
-        in_file = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
-
-    # Constant declarations
-    IM_WIDTH = 950
-    IM_HEIGHT = 600
-    DETECTION_CYCLE = 20 # how often to run the detection algo
-    MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
 
     # Initializations for CSV
     prev_time = time.time()
@@ -313,8 +332,9 @@ if __name__ == '__main__' :
                     current_boxes.append((tracker, updated_box))
 
                     updates[tracker] += 1
-                    if updates[tracker] == 20: # arbitrary threshold
+                    if updates[tracker] == TRACKING_BUFFER:
                         counter += 1
+
                 else :
                     # Tracking failure
                     cv2.putText(frame, "Tracking failure detected", (100,80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2)
@@ -323,7 +343,7 @@ if __name__ == '__main__' :
             print("Original Number of Trackers:", len(multitracker))
             fail_count = len(failed_trackers)
 
-            # if failed at least once, remove those trackers
+            # REMOVING TRACKERS BASED UPON KCF REPORTED TRACKING FAILURES
             if not fail_count == 0:
                 for bad_tracker in failed_trackers:
                     multitracker.remove(bad_tracker)
@@ -334,24 +354,9 @@ if __name__ == '__main__' :
             cv2.putText(frame, tracker_type + " Tracker", (100,20), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 170,50), 2);
             cv2.putText(frame, "Total: " + str(counter), (50, IM_HEIGHT - 40), cv2.FONT_HERSHEY_SIMPLEX, 1.50, (0,0,0), 2);
 
-            # Display result
+            # Display result and write to CSV
             cv2.imshow("Multi Object Tracking", frame)
-
-            # WRITING TO CSV ================== MAKE SEPARATE FUNCTION
-            current_time = time.time()
-            # every 3ish seconds write to csv
-            if current_time - prev_time > 3:
-                # local time parsing
-                local_time = time.localtime()
-                time_string = time.strftime("%Y-%m-%d %H:%M:%S EST", local_time)
-
-                # write data to csv
-                newrow = [time_string, "Pedestrian", direction, str(counter)]
-                writer.writerow(newrow)
-                f.flush()
-
-                # update previous time
-                prev_time = current_time
+            prev_time = writeCSV(prev_time)
 
             # Exit if ESC pressed
             k = cv2.waitKey(1) & 0xff
