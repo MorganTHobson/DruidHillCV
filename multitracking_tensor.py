@@ -194,6 +194,8 @@ def is_match(newbox_size, currbox_size, newbox_center, currbox_center):
 
 def get_assignments(tracker_centers, detection_centers, m):
     matrix = []
+    limited_indexes = []
+    association_limit = 75
     
     # Generate distance matrix trackers=rows detections=column
     for tx,ty in tracker_centers:
@@ -205,7 +207,12 @@ def get_assignments(tracker_centers, detection_centers, m):
         matrix.append(row)
 
     indexes = m.compute(matrix)
-    return indexes
+
+    for x,y in indexes:
+        if matrix[x][y] < association_limit:
+            limited_indexes.append((x,y))
+
+    return limited_indexes
 
 if __name__ == '__main__' :
 
