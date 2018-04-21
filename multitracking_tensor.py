@@ -10,11 +10,7 @@ import argparse
 import collections
 from collections import defaultdict
 from io import StringIO
-import matplotlib
-matplotlib.use('TKAgg')
-import matplotlib.pyplot as plt
-from matplotlib import dates as mdates
-from matplotlib import animation as animation
+
 from PIL import Image
 from munkres import Munkres
 
@@ -33,10 +29,6 @@ sys.path.append("..")
 # setup output CSV format and file name globals
 output_format = ["Time", "Type", "Direction", "Total"]
 output_file = "tensor_output.csv"
-
-# set up for graph animation
-fig = plt.figure() 
-ax1 = fig.add_subplot(1,1,1)
 
 # # TENSORFLOW OBJECT DETECTION MODEL PREPARATION (ONLINE TRAINING) =======================================================
 
