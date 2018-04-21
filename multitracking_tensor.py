@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import os
 import six.moves.urllib as urllib
 import sys
