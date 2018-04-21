@@ -27,5 +27,5 @@ This project was developed for the project course 601.310 Software for Resilient
 Partners for the project also included Jacob Green of Spread Concepts LLC, and the nonprofit Parks and People Foundation of Baltimore, particularly Valerie Rupp. Special thanks to Austin Reiter for helping with field advice and general guidance.
 
 ## Additional Information
-Visit our project website here: http://www.dsn.jhu.edu/courses/cs310/baltimore/
+Visit our project website here: http://www.dsn.jhu.edu/courses/cs310/baltimore/ <br />
 Check out the Parks and People Foundation here: http://parksandpeople.org/
