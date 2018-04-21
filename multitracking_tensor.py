@@ -352,6 +352,8 @@ if __name__ == '__main__' :
                         untracked_cycles[current_boxes[i][0]] += 1
                         if untracked_cycles[current_boxes[i][0]] >= UNTRACKED_THRESH:
                             data_remove.append(i)
+                    else:
+                        untracked_cycles[current_boxes[i][0]] = 0
 
                 for i in reversed(data_remove):
                     multitracker.remove(current_boxes[i][0])
