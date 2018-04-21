@@ -144,6 +144,7 @@ def detect_and_get_bboxes(frame):
 
 # TODO: you could give these IDs using a dict.
 updates = {}
+untracked_cycles = {}
 def create_tracker(frame, bbox):
 
     # bleh, write better code: tracker_type global
@@ -163,6 +164,7 @@ def create_tracker(frame, bbox):
 
     ok = tracker.init(frame, bbox)
     updates[tracker] = 0
+    untracked_cycles[tracker] = 0
     return tracker
 
 def is_match(newbox_size, currbox_size, newbox_center, currbox_center):
@@ -192,10 +194,9 @@ def is_match(newbox_size, currbox_size, newbox_center, currbox_center):
     else:
         return False
 
-def get_assignments(tracker_centers, detection_centers, m):
+def get_assignments(tracker_centers, detection_centers, m, association_limit):
     matrix = []
     limited_indexes = []
-    association_limit = 75
     
     # Generate distance matrix trackers=rows detections=column
     for tx,ty in tracker_centers:
@@ -241,6 +242,8 @@ if __name__ == '__main__' :
     IM_WIDTH = 950
     IM_HEIGHT = 600
     DETECTION_CYCLE = 10 # how often to run the detection algo
+    UNTRACKED_THRESH = 3 # how many detection cycles to permit unassociated trackers
+    PIXEL_LIMIT = 50     # allowed distance between associated trackers and detections
 
     prev_time = time.time()
 
@@ -332,7 +335,7 @@ if __name__ == '__main__' :
                         xmin, ymin, width, height = box[:]
                         center = (xmin + width/2, ymin + height/2)
                         tracker_centers.append(center)
-                    indexes = get_assignments(tracker_centers, detection_centers, m)
+                    indexes = get_assignments(tracker_centers, detection_centers, m, PIXEL_LIMIT)
 
                 # the indexes of the matched pairs
                 valid_trackers = []
@@ -346,7 +349,9 @@ if __name__ == '__main__' :
                 # remove all unmatched trackers
                 for i in range(0,len(current_boxes)):
                     if i not in valid_trackers:
-                        data_remove.append(i)
+                        untracked_cycles[current_boxes[i][0]] += 1
+                        if untracked_cycles[current_boxes[i][0]] >= UNTRACKED_THRESH:
+                            data_remove.append(i)
 
                 for i in reversed(data_remove):
                     multitracker.remove(current_boxes[i][0])
