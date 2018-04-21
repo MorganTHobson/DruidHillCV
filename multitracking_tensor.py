@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import os
 import six.moves.urllib as urllib
 import sys
@@ -7,8 +8,6 @@ import tensorflow as tf
 import zipfile
 import argparse
 import collections
-
-
 from collections import defaultdict
 from io import StringIO
 import matplotlib
@@ -17,12 +16,12 @@ import matplotlib.pyplot as plt
 from matplotlib import dates as mdates
 from matplotlib import animation as animation
 from PIL import Image
+from munkres import Munkres
 
 import cv2
 import time
 import csv
  
-# OBJECT DETECTION IMPORTS
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
 
@@ -42,9 +41,6 @@ ax1 = fig.add_subplot(1,1,1)
 # # TENSORFLOW OBJECT DETECTION MODEL PREPARATION (ONLINE TRAINING) =======================================================
 
 # ## Variables
-# 
-# Any model exported using the `export_inference_graph.py` tool can be loaded here simply by changing `PATH_TO_CKPT` to point to a new .pb file.  
-# By default we use an "SSD with Mobilenet" model here. See the [detection model zoo](https://github.com/tensorflow/models/blob/master/object_detection/g3doc/detection_model_zoo.md) for a list of other models that can be run out-of-the-box with varying speeds and accuracies.
 
 # What model to download.
 MODEL_NAME = 'ssd_mobilenet_v1_coco_11_06_2017'
@@ -82,7 +78,6 @@ with detection_graph.as_default():
 label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
 categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
 category_index = label_map_util.create_category_index(categories)
-
 
 # ## Helper code
 def load_image_into_numpy_array(image):
@@ -122,7 +117,7 @@ def detect_and_get_bboxes(frame):
 
         # grabbing all valid detection above confidence of min_score_thresh bboxes
         for i in range(boxes_squeezed.shape[0]):
-            if scores_squeezed[i] < min_score_thresh:
+            if scores_squeezed[i] < MIN_SCORE_THRESH:
                 break
             if classes_squeezed[i] == 1:
                 ymin, xmin, ymax, xmax = tuple(boxes_squeezed[i].tolist()) # values are normalized from 0 to 1
@@ -141,7 +136,6 @@ def detect_and_get_bboxes(frame):
         print("Failed to detect any objects. Moving onto next frame.")
         return (False, bboxes)
 
-# TODO: you could give these IDs using a dict.
 updates = {}
 def create_tracker(frame, bbox):
 
@@ -162,36 +156,28 @@ def create_tracker(frame, bbox):
 
     ok = tracker.init(frame, bbox)
     updates[tracker] = 0
+
     return tracker
 
-def is_match(newbox_size, currbox_size, newbox_center, currbox_center):
-    SIZE_THRESHOLD = 0.05 # at least within 5% of its size
-    CENTER_THRESHOLD = 0.15 # currbox_center[0]*0.05 + currbox_center[1]*0.05
+def get_assignments(tracker_centers, detection_centers, m):
+    matrix = []
+    
+    # Generate distance matrix trackers=rows detections=column
+    for tx,ty in tracker_centers:
+        row = []
+        for dx,dy in detection_centers:
+            delta_x = dx - tx
+            delta_y = dy - ty
+            row.append(math.sqrt(delta_x*delta_x + delta_y*delta_y))
+        matrix.append(row)
 
-    sim_size = False
-    sim_center = False
-
-    size_diff = abs(newbox_size - currbox_size)/currbox_size
-    print("SIZE_RATIO:", size_diff)
-
-    if size_diff < SIZE_THRESHOLD:
-        sim_size = True
-
-    newbox_x, newbox_y = newbox_center
-    currbox_x, currbox_y = currbox_center
-    center_diff = abs(newbox_x - currbox_x)/currbox_x + abs(newbox_y - currbox_y)/currbox_y
-
-    print("CENTER_DIFF:", center_diff)
-
-    if center_diff < CENTER_THRESHOLD:
-        sim_center = True
-
-    if sim_size and sim_center:
-        return True
-    else:
-        return False
+    indexes = m.compute(matrix)
+    return indexes
 
 if __name__ == '__main__' :
+
+    # Hungarian Algorithm object
+    m = Munkres()
 
     # # TRACKER SETUP=============================================================
 
@@ -209,59 +195,42 @@ if __name__ == '__main__' :
     ap.add_argument("-i", "--input", help="filename of video to analyze")
     args = vars(ap.parse_args())
 
-    # initialize minimum confidence needed to call an object detection successful
-    min_score_thresh = 0.5 #TODO: init better, maybe through default in function call?
-
-    IM_WIDTH = 950
-    IM_HEIGHT = 600
-    DETECTION_CYCLE = 20 # how often to run the detection algo
-
-    prev_time = time.time()
-
-    # temporary for CSV output
-    direction = True
-
+    # if video is given, use as input, or if video isn't given, default to live stream
     in_file = ""
     if args["input"]:
         in_file = args["input"]
     else:
-        in_file = "https://stream-us1-alfa.dropcam.com/nexus_aac/591b131879304cedbb64634cc754c7a2/chunklist_w861715763.m3u8"
+        in_file = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
 
+    # Constant declarations
+    IM_WIDTH = 950
+    IM_HEIGHT = 600
+    DETECTION_CYCLE = 20 # how often to run the detection algo
+    MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
+
+    # Initializations for CSV
+    prev_time = time.time()
+    direction = True
+
+    # Initializations for detection
+    multitracker = []
+    frame_num = 0
+    counter = 0
+
+    # Check if video is openable
     video = cv2.VideoCapture(in_file)
     if not video.isOpened():
         print("Could not open video")
         sys.exit()
 
-    # Initializations to detect first bounding box.
-    detection_found = False
-    ok = True
-    multitracker = []
-    frame = []
-    bboxes = []
-
-    # detect first bbox
+    # Check if video is readable
     print("Starting Initial Detection...")
-    while not detection_found:
-        # Read frame.
-        ok, frame = video.read()
-        if not ok:
-            print('Cannot read video file')
-            sys.exit()
+    ok, frame = video.read()
+    if not ok:
+        print('Cannot read video file')
+        sys.exit()
 
-        # get the first valid detection's bounding boxes
-        detection_found, bboxes = detect_and_get_bboxes(frame)
-
-    # resize for display 
-    frame = cv2.resize(frame, (IM_WIDTH, IM_HEIGHT))
- 
-    # add trackers to multitracker with first valid frame and each bounding box to track
-    for bbox in bboxes:
-        ok = multitracker.append(create_tracker(frame, bbox))
-
-    # Track Objects
-    frame_num = 0
-    counter = 0
-
+    # begin detection + tracking cycle
     with open(output_file, "w") as f:
         writer = csv.writer(f, delimiter=',')
 
@@ -291,32 +260,47 @@ if __name__ == '__main__' :
                 # get the valid detection's bounding boxes
                 detection_found, bboxes = detect_and_get_bboxes(frame)
 
-                if detection_found:
+                detection_centers = []
+                tracker_centers = []
+
+                # get indexes of associated boxes
+                indexes = []
+                if (len(current_boxes) != 0 and len(bboxes) != 0):
+                    # generate centers
                     for newbox in bboxes:
-                        # see if the bbox is already being tracked
-                        # IDEA: Hungarian Algorithm
-
                         xmin, ymin, width, height = newbox[:]
-                        newbox_size = width * height
-                        newbox_center = (xmin + width/2, ymin + height/2)
+                        center = (xmin + width/2, ymin + height/2)
+                        detection_centers.append(center)
+                    for tracker,box in current_boxes:
+                        xmin, ymin, width, height = box[:]
+                        center = (xmin + width/2, ymin + height/2)
+                        tracker_centers.append(center)
+                    indexes = get_assignments(tracker_centers, detection_centers, m)
 
-                        # check against each existing box to see if same object
-                        match = False
-                        for tracker, box in current_boxes:
-                            xmin_curr, ymin_curr, w_curr, h_curr = box[:]
-                            currbox_size = w_curr * h_curr
-                            currbox_center = (xmin_curr + w_curr/2, ymin_curr + h_curr/2)
+                # the indexes of the matched pairs
+                valid_trackers = []
+                valid_detections = []
+                data_remove = []
 
-                            match = is_match(newbox_size, currbox_size, newbox_center, currbox_center)
-                            if match:
-                                print("MATCH - Object already being tracked. Moving onto next newly detected box.")
-                                break
+                for t,d in indexes:
+                    valid_trackers.append(t)
+                    valid_detections.append(d)
 
-                        if not match:
-                            print("Object newly detected. Adding to multitracker!")
-                            ok = multitracker.append(create_tracker(frame, newbox)) # how to append only new bounding boxes? IDs? currently just removing and appending all
+                # remove all unmatched trackers
+                for i in range(0,len(current_boxes)):
+                    if i not in valid_trackers:
+                        data_remove.append(i)
 
-                        print("Number of trackers after re-detection:", len(multitracker))
+                for i in reversed(data_remove):
+                    multitracker.remove(current_boxes[i][0])
+                    current_boxes.remove(current_boxes[i])
+                    print("Tracker " + str(i) + " removed")
+
+                # add all unmatched detections
+                for i in range(0,len(bboxes)):
+                    if i not in valid_detections:
+                        multitracker.append(create_tracker(frame, bboxes[i]))
+                        print("Box added: " + str(i))
 
             # Start timer
             timer = cv2.getTickCount()
@@ -354,12 +338,8 @@ if __name__ == '__main__' :
                     updates.pop(bad_tracker)
                 print(">>>", fail_count,"TRACKING FAILURES OCCURRED! Number of trackers after removal:", len(multitracker))
 
-            # Calculate Frames per second (FPS)
-            fps = cv2.getTickFrequency() / (cv2.getTickCount() - timer);
-
             # Display tracker type and FPS on frame
-            cv2.putText(frame, tracker_type + " Tracker", (100,20), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50,170,50), 2);
-            cv2.putText(frame, "FPS : " + str(int(fps)), (100,50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (50,170,50), 2);
+            cv2.putText(frame, tracker_type + " Tracker", (100,20), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 170,50), 2);
             cv2.putText(frame, "Total: " + str(counter), (50, IM_HEIGHT - 40), cv2.FONT_HERSHEY_SIMPLEX, 1.50, (0,0,0), 2);
 
             # Display result
