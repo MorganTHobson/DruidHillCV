@@ -136,7 +136,7 @@ def detect_and_get_bboxes(frame):
         print("Failed to detect any objects. Moving onto next frame.")
         return (False, bboxes)
 
-def writeCSV(prev_time):
+def writeCSV(prev_time, prev_count, total_count):
     # WRITING TO CSV ================== MAKE SEPARATE FUNCTION
     current_time = time.time()
     # every 3ish seconds write to csv
@@ -144,16 +144,18 @@ def writeCSV(prev_time):
         # local time parsing
         local_time = time.localtime()
         time_string = time.strftime("%Y-%m-%d %H:%M:%S EST", local_time)
+        delta_count = total_count - prev_count
 
         # write data to csv
-        newrow = [time_string, "Pedestrian", direction, str(counter)]
+        newrow = [time_string, "Pedestrian", direction, str(delta_count)]
         writer.writerow(newrow)
         f.flush()
 
         # update previous time
         prev_time = current_time
+        prev_count = total_count
 
-    return prev_time
+    return prev_time, prev_count
 
 updates = {}
 def create_tracker(frame, bbox):
@@ -227,6 +229,7 @@ if __name__ == '__main__' :
     multitracker = []
     frame_num = 0
     counter = 0
+    prev_count = 0
 
     # Check if video is openable
     video = cv2.VideoCapture(in_file)
@@ -356,7 +359,7 @@ if __name__ == '__main__' :
 
             # Display result and write to CSV
             cv2.imshow("Multi Object Tracking", frame)
-            prev_time = writeCSV(prev_time)
+            prev_time, prev_count = writeCSV(prev_time, prev_count, counter)
 
             # Exit if ESC pressed
             k = cv2.waitKey(1) & 0xff
