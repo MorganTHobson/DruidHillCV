@@ -33,8 +33,11 @@ output_file = "tensor_output.csv"
 # Constant declarations
 IM_WIDTH = 950
 IM_HEIGHT = 600
+IM_ZOOM = 0.5
 DETECTION_CYCLE = 20 # how often to run the detection algo
 MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
+UNTRACKED_THRESH = 3 # how many detection cycles to permit unassociated trackers
+PIXEL_LIMIT = 50     # allowed distance between associated trackers and detections
 TRACKING_BUFFER = 20
 DEFAULT_STREAM = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
 
@@ -79,11 +82,6 @@ label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
 categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
 category_index = label_map_util.create_category_index(categories)
 
-# ## Helper code
-def load_image_into_numpy_array(image):
-    (im_width, im_height) = image.size
-    return np.array(image.getdata()).reshape((im_height, im_width, 3)).astype(np.uint8)
-
 # detect object and return array of bbox tuples in format (x, y, w, h)
 def detect_and_get_bboxes(frame):
 
@@ -121,7 +119,7 @@ def detect_and_get_bboxes(frame):
                 break
             if classes_squeezed[i] == 1:
                 ymin, xmin, ymax, xmax = tuple(boxes_squeezed[i].tolist()) # values are normalized from 0 to 1
-                bbox = (xmin*IM_WIDTH, ymin*IM_HEIGHT, (xmax - xmin)*IM_WIDTH, (ymax - ymin)*IM_HEIGHT) # bbox format: (x, y, w, h)
+                bbox = (xmin*im_width, ymin*im_height, (xmax - xmin)*im_width, (ymax - ymin)*im_height) # bbox format: (x, y, w, h)
 
                 bboxes.append(bbox)
                 eligible_exists = True
@@ -158,6 +156,7 @@ def writeCSV(prev_time, prev_count, total_count):
     return prev_time, prev_count
 
 updates = {}
+untracked_cycles = {}
 def create_tracker(frame, bbox):
 
     # bleh, write better code: tracker_type global
@@ -177,11 +176,13 @@ def create_tracker(frame, bbox):
 
     ok = tracker.init(frame, bbox)
     updates[tracker] = 0
+    untracked_cycles[tracker] = 0
 
     return tracker
 
-def get_assignments(tracker_centers, detection_centers, m):
+def get_assignments(tracker_centers, detection_centers, m, association_limit):
     matrix = []
+    limited_indexes = []
     
     # Generate distance matrix trackers=rows detections=column
     for tx,ty in tracker_centers:
@@ -193,7 +194,12 @@ def get_assignments(tracker_centers, detection_centers, m):
         matrix.append(row)
 
     indexes = m.compute(matrix)
-    return indexes
+
+    for x,y in indexes:
+        if matrix[x][y] < association_limit:
+            limited_indexes.append((x,y))
+
+    return limited_indexes
 
 if __name__ == '__main__' :
 
@@ -213,13 +219,20 @@ if __name__ == '__main__' :
 
     # setup commandline argument parsing for input video
     ap = argparse.ArgumentParser()
-    ap.add_argument("-i", "--input", help="filename of video to analyze")
+    ap.add_argument("-i", "--video", help="filename of video to analyze")
+    ap.add_argument("-c", "--detection_cycle", default=20, help="how often to run the detection algorithm")
+    ap.add_argument("-t", "--threshold", default=0.5, help="minimum confidence needed to declare successful detection")
+    ap.add_argument("-b", "--tracking_buffer", default=20, help="number of frames to check before calling a detection successful/failure")
     args = vars(ap.parse_args())
+
+# DETECTION_CYCLE = 20 # how often to run the detection algo
+# MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
+# TRACKING_BUFFER = 20
 
     # if video is given, use as input, or if video isn't given, default to live stream
     in_file = DEFAULT_STREAM
-    if args["input"]:
-        in_file = args["input"]
+    if args["video"]:
+        in_file = args["video"]
 
     # Initializations for CSV
     prev_time = time.time()
@@ -237,8 +250,13 @@ if __name__ == '__main__' :
         print("Could not open video")
         sys.exit()
 
+    # get size of video to scale down size
+    im_width = video.get(3)
+    im_height = video.get(4)
+    im_width = int(im_width*IM_ZOOM)
+    im_height = int(im_height*IM_ZOOM)
+
     # Check if video is readable
-    print("Starting Initial Detection...")
     ok, frame = video.read()
     if not ok:
         print('Cannot read video file')
@@ -259,9 +277,9 @@ if __name__ == '__main__' :
             frame_num += 1
 
             # resize frame to view better
-            frame = cv2.resize(frame, (IM_WIDTH, IM_HEIGHT))
+            frame = cv2.resize(frame, (im_width, im_height), interpolation = cv2.INTER_LINEAR)
 
-            # TODO: every so often should run detection TOUGH PART. SIGH.
+            # Re-do detectio every n-th frame
             if frame_num % DETECTION_CYCLE == 0:
 
                 print(">>> Re-doing detection...")
@@ -269,7 +287,7 @@ if __name__ == '__main__' :
                 if not ok:
                     print('Cannot read video file')
                     sys.exit()
-                frame = cv2.resize(frame, (IM_WIDTH, IM_HEIGHT))
+                frame = cv2.resize(frame, (im_width, im_height), interpolation = cv2.INTER_LINEAR)
 
                 # get the valid detection's bounding boxes
                 detection_found, bboxes = detect_and_get_bboxes(frame)
@@ -289,7 +307,7 @@ if __name__ == '__main__' :
                         xmin, ymin, width, height = box[:]
                         center = (xmin + width/2, ymin + height/2)
                         tracker_centers.append(center)
-                    indexes = get_assignments(tracker_centers, detection_centers, m)
+                    indexes = get_assignments(tracker_centers, detection_centers, m, PIXEL_LIMIT)
 
                 # the indexes of the matched pairs
                 valid_trackers = []
@@ -303,7 +321,11 @@ if __name__ == '__main__' :
                 # remove all unmatched trackers
                 for i in range(0,len(current_boxes)):
                     if i not in valid_trackers:
-                        data_remove.append(i)
+                        untracked_cycles[current_boxes[i][0]] += 1
+                        if untracked_cycles[current_boxes[i][0]] >= UNTRACKED_THRESH:
+                            data_remove.append(i)
+                    else:
+                        untracked_cycles[current_boxes[i][0]] = 0
 
                 for i in reversed(data_remove):
                     multitracker.remove(current_boxes[i][0])
@@ -354,8 +376,8 @@ if __name__ == '__main__' :
                 print(">>>", fail_count,"TRACKING FAILURES OCCURRED! Number of trackers after removal:", len(multitracker))
 
             # Display tracker type and FPS on frame
-            cv2.putText(frame, tracker_type + " Tracker", (100,20), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 170,50), 2);
-            cv2.putText(frame, "Total: " + str(counter), (50, IM_HEIGHT - 40), cv2.FONT_HERSHEY_SIMPLEX, 1.50, (0,0,0), 2);
+            cv2.putText(frame, tracker_type + " Tracker", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 170,50), 2);
+            cv2.putText(frame, "Total Pedestrians = " + str(counter), (50, im_height - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,0), 2);
 
             # Display result and write to CSV
             cv2.imshow("Multi Object Tracking", frame)
