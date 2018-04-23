@@ -34,9 +34,9 @@ output_file = "tensor_output.csv"
 IM_WIDTH = 950
 IM_HEIGHT = 600
 IM_ZOOM = 0.5
-DETECTION_CYCLE = 20 # how often to run the detection algo
+DETECTION_CYCLE = 10 # how often to run the detection algo
 MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
-UNTRACKED_THRESH = 3 # how many detection cycles to permit unassociated trackers
+UNTRACKED_THRESH = 5 # how many detection cycles to permit unassociated trackers
 PIXEL_LIMIT = 50     # allowed distance between associated trackers and detections
 TRACKING_BUFFER = 20
 DEFAULT_STREAM = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
@@ -201,6 +201,59 @@ def get_assignments(tracker_centers, detection_centers, m, association_limit):
 
     return limited_indexes
 
+def run_detection(frame):
+    # get the valid detection's bounding boxes
+    detection_found, bboxes = detect_and_get_bboxes(frame)
+
+    detection_centers = []
+    tracker_centers = []
+
+    # get indexes of associated boxes
+    indexes = []
+    if (len(current_boxes) != 0 and len(bboxes) != 0):
+        # generate centers
+        for newbox in bboxes:
+            xmin, ymin, width, height = newbox[:]
+            center = (xmin + width/2, ymin + height/2)
+            detection_centers.append(center)
+        for tracker,box in current_boxes:
+            xmin, ymin, width, height = box[:]
+            center = (xmin + width/2, ymin + height/2)
+            tracker_centers.append(center)
+        indexes = get_assignments(tracker_centers, detection_centers, m, PIXEL_LIMIT)
+
+    # the indexes of the matched pairs
+    valid_trackers = []
+    valid_detections = []
+    data_remove = []
+
+    for t,d in indexes:
+        valid_trackers.append(t)
+        valid_detections.append(d)
+
+    # remove all unmatched trackers
+    for i in range(0,len(current_boxes)):
+        # count many times the bbox fails to be associated
+        if i not in valid_trackers:
+            untracked_cycles[current_boxes[i][0]] += 1
+            if untracked_cycles[current_boxes[i][0]] >= UNTRACKED_THRESH:
+                data_remove.append(i) # if it fails to be associated x times then stage for removal
+        else:
+            untracked_cycles[current_boxes[i][0]] = 0
+
+    # actual removal of the tracker
+    for i in reversed(data_remove):
+        multitracker.remove(current_boxes[i][0])
+        current_boxes.remove(current_boxes[i])
+
+        print("Tracker " + str(i) + " removed")
+
+    # add all unmatched detections
+    for i in range(0,len(bboxes)):
+        if i not in valid_detections:
+            multitracker.append(create_tracker(frame, bboxes[i]))
+            print("Box added: " + str(i))
+
 if __name__ == '__main__' :
 
     # Hungarian Algorithm object
@@ -279,68 +332,6 @@ if __name__ == '__main__' :
             # resize frame to view better
             frame = cv2.resize(frame, (im_width, im_height), interpolation = cv2.INTER_LINEAR)
 
-            # Re-do detectio every n-th frame
-            if frame_num % DETECTION_CYCLE == 0:
-
-                print(">>> Re-doing detection...")
-                ok, frame = video.read()
-                if not ok:
-                    print('Cannot read video file')
-                    sys.exit()
-                frame = cv2.resize(frame, (im_width, im_height), interpolation = cv2.INTER_LINEAR)
-
-                # get the valid detection's bounding boxes
-                detection_found, bboxes = detect_and_get_bboxes(frame)
-
-                detection_centers = []
-                tracker_centers = []
-
-                # get indexes of associated boxes
-                indexes = []
-                if (len(current_boxes) != 0 and len(bboxes) != 0):
-                    # generate centers
-                    for newbox in bboxes:
-                        xmin, ymin, width, height = newbox[:]
-                        center = (xmin + width/2, ymin + height/2)
-                        detection_centers.append(center)
-                    for tracker,box in current_boxes:
-                        xmin, ymin, width, height = box[:]
-                        center = (xmin + width/2, ymin + height/2)
-                        tracker_centers.append(center)
-                    indexes = get_assignments(tracker_centers, detection_centers, m, PIXEL_LIMIT)
-
-                # the indexes of the matched pairs
-                valid_trackers = []
-                valid_detections = []
-                data_remove = []
-
-                for t,d in indexes:
-                    valid_trackers.append(t)
-                    valid_detections.append(d)
-
-                # remove all unmatched trackers
-                for i in range(0,len(current_boxes)):
-                    if i not in valid_trackers:
-                        untracked_cycles[current_boxes[i][0]] += 1
-                        if untracked_cycles[current_boxes[i][0]] >= UNTRACKED_THRESH:
-                            data_remove.append(i)
-                    else:
-                        untracked_cycles[current_boxes[i][0]] = 0
-
-                for i in reversed(data_remove):
-                    multitracker.remove(current_boxes[i][0])
-                    current_boxes.remove(current_boxes[i])
-                    print("Tracker " + str(i) + " removed")
-
-                # add all unmatched detections
-                for i in range(0,len(bboxes)):
-                    if i not in valid_detections:
-                        multitracker.append(create_tracker(frame, bboxes[i]))
-                        print("Box added: " + str(i))
-
-            # Start timer
-            timer = cv2.getTickCount()
-
             # Update tracker
             current_boxes = []
             failed_trackers = []
@@ -356,13 +347,16 @@ if __name__ == '__main__' :
 
                     current_boxes.append((tracker, updated_box))
 
-                    updates[tracker] += 1
-                    if updates[tracker] == TRACKING_BUFFER:
-                        counter += 1
+                    # updates[tracker] += 1
+                    # if updates[tracker] == TRACKING_BUFFER: # needs to be tracked throughout at least x frames in order to be counted as a person
+                    #     counter += 1
 
                 else :
                     # Tracking failure
                     cv2.putText(frame, "Tracking failure detected", (100,80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2)
+
+                    # if there is a tracking failure, try re-running the object detection algorithm and dont get rid of the tracker until the object detection
+                    # officially says it's a bad tracker
                     failed_trackers.append(tracker)
 
             print("Original Number of Trackers:", len(multitracker))
@@ -382,6 +376,18 @@ if __name__ == '__main__' :
             # Display result and write to CSV
             cv2.imshow("Multi Object Tracking", frame)
             prev_time, prev_count = writeCSV(prev_time, prev_count, counter)
+
+            # Re-do detection every n-th frame
+            if frame_num % DETECTION_CYCLE == 0:
+
+                print(">>> Re-doing detection...")
+                ok, frame = video.read()
+                if not ok:
+                    print('Cannot read video file')
+                    sys.exit()
+                frame = cv2.resize(frame, (im_width, im_height), interpolation = cv2.INTER_LINEAR)
+
+                run_detection(frame)
 
             # Exit if ESC pressed
             k = cv2.waitKey(1) & 0xff
