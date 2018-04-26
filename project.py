@@ -35,12 +35,13 @@ IM_ZOOM = 0.5
 DETECTION_CYCLE = 20 # how often to run the detection algo
 MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
 UNTRACKED_THRESH = 3 # how many detection cycles to permit unassociated trackers
-PIXEL_LIMIT = 50     # allowed distance between associated trackers and detections
+PIXEL_LIMIT = 50     # max allowed distance between associated trackers and detections
 TRACKING_BUFFER = 20
 DEFAULT_STREAM = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
 
 updates = {}
 untracked_cycles = {}
+stationary = {}
 
 # # TENSORFLOW OBJECT DETECTION MODEL PREPARATION (ONLINE TRAINING) =======================================================
 
@@ -145,13 +146,13 @@ def detect_and_get_bboxes(frame, min_score_thresh):
                 eligible_exists = True
 
         if not eligible_exists:
-            print("Failed to find accurate enough detections. Moving onto next frame.")
+            #print("Failed to find accurate enough detections. Moving onto next frame.")
             return (False, bboxes)
 
-        print("Number of valid bboxes found:", len(bboxes))
+        #print("Number of valid bboxes found:", len(bboxes))
         return (True, bboxes)
     else:
-        print("Failed to detect any objects. Moving onto next frame.")
+        #print("Failed to detect any objects. Moving onto next frame.")
         return (False, bboxes)
 
 # write data to CSV file
@@ -269,13 +270,13 @@ def run_detection(frame, pixel_limit, untracked_thresh, min_score_thresh):
         multitracker.remove(current_boxes[i][0])
         current_boxes.remove(current_boxes[i])
 
-        print("Tracker " + str(i) + " removed")
+        #print("Tracker " + str(i) + " removed")
 
     # add all unmatched detections
     for i in range(0,len(bboxes)):
         if i not in valid_detections:
             multitracker.append(create_tracker(frame, bboxes[i]))
-            print("Box added: " + str(i))
+            #print("Box added: " + str(i))
 
 def get_video_stream(in_file):
     # Check if video is openable
@@ -324,6 +325,7 @@ if __name__ == '__main__' :
     frame_num = 0
     counter = 0
     prev_count = 0
+    name = "Druid Hill Project"
 
     video, im_width, im_height = get_video_stream(args.in_file)
 
@@ -332,7 +334,7 @@ if __name__ == '__main__' :
         writer = csv.writer(f, delimiter=',')
 
         while True:
-            print("========NEW FRAME===============")
+            # print("========NEW FRAME===============")
             # Read a new frame
             ok, frame = video.read()
             if not ok:
@@ -378,21 +380,25 @@ if __name__ == '__main__' :
                 for bad_tracker in failed_trackers:
                     multitracker.remove(bad_tracker)
                     updates.pop(bad_tracker)
-                print(">>>", fail_count,"TRACKING FAILURES OCCURRED! Number of trackers after removal:", len(multitracker))
+                # print(">>>", fail_count,"TRACKING FAILURES OCCURRED! Number of trackers after removal:", len(multitracker))
 
             # Display tracker type, detection cycles, allowed unassociations, and total count of people on frame
-            cv2.putText(frame, tracker_type + " Tracker", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (150, 119, 255), 2);
-            cv2.putText(frame, str(args.DETECTION_CYCLE) + " Cycles Per Detection", (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
-            cv2.putText(frame, str(args.UNTRACKED_THRESH) + " Unassociations Allowed", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
-            cv2.putText(frame, "Total Pedestrians = " + str(counter), (50, im_height - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2);
+            #cv2.putText(frame, tracker_type + " Tracker", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 170, 50), 2);
+            #cv2.putText(frame, str(args.DETECTION_CYCLE) + " Cycles Per Detection", (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
+            #cv2.putText(frame, str(args.UNTRACKED_THRESH) + " Unassociations Allowed", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
+            #cv2.putText(frame, "Total Pedestrians = " + str(counter), (50, im_height - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2);
 
             # Display result and write to CSV
-            cv2.imshow("Pedestrian Detection and Tracking", frame)
+            #cv2.namedWindow(name, cv2.WINDOW_NORMAL);
+
+            # cv2.setWindowProperty(name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN);
+            
+            #cv2.imshow(name, frame);
             prev_time, prev_count = writeCSV(prev_time, prev_count, counter)
 
             # Re-do detection every n-th frame
             if frame_num % args.DETECTION_CYCLE == 0:
-                print(">>> Re-doing detection...")
+                # print(">>> Re-doing detection...")
 
                 ok, frame = video.read()
                 if not ok:
@@ -407,10 +413,10 @@ if __name__ == '__main__' :
             if k == 27 : #ESC
                 cv2.destroyAllWindows()
                 break
-            if cv2.getWindowProperty("Pedestrian Detection and Tracking", cv2.WND_PROP_VISIBLE) < 1: # X key on window
-                break
+            # if cv2.getWindowProperty("Pedestrian Detection and Tracking", cv2.WND_PROP_VISIBLE) < 1: # X key on window
+            #     break
 
     cv2.destroyAllWindows()
 
-
-print("RESULTS: " + str(counter) + " people were detected walking through the frame.")
+# print("RESULTS: " + str(counter) + " people were detected walking through the frame.")
+print(str(counter))
