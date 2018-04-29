@@ -30,20 +30,15 @@ sys.path.append("..")
 output_format = ["Time", "Type", "Direction", "Total"]
 output_file = "tensor_output.csv"
 
-# Constant declarations
-IM_WIDTH = 950
-IM_HEIGHT = 600
+# Constant defaults
 IM_ZOOM = 0.5
 DETECTION_CYCLE = 10 # how often to run the detection algo
 MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
 UNTRACKED_THRESH = 3 # how many detection cycles to permit unassociated trackers
 PIXEL_LIMIT = 150     # allowed distance between associated trackers and detections
-TRACKING_BUFFER = 20
 DEFAULT_STREAM = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
 
 # # TENSORFLOW OBJECT DETECTION MODEL PREPARATION (ONLINE TRAINING) =======================================================
-
-# ## Variables
 
 # What model to download.
 MODEL_NAME = 'ssd_mobilenet_v1_coco_11_06_2017'
@@ -54,11 +49,8 @@ DOWNLOAD_BASE = 'http://download.tensorflow.org/models/object_detection/'
 PATH_TO_CKPT = MODEL_NAME + '/frozen_inference_graph.pb'
 
 # List of the strings that is used to add correct label for each box.
-
-# This is for Aidan
-#/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/tensorflow/research/object_detection/data
-PATH_TO_LABELS = os.path.join('/usr/local/lib/python3.6/site-packages/tensorflow/models/research/object_detection/data', 'mscoco_label_map.pbtxt')
-print(PATH_TO_LABELS)
+#PATH_TO_LABELS = os.path.join('/usr/local/lib/python3.6/site-packages/tensorflow/models/research/object_detection/data', 'mscoco_label_map.pbtxt')
+PATH_TO_LABELS = os.path.join('/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/tensorflow/research/object_detection/data', 'mscoco_label_map.pbtxt')
 NUM_CLASSES = 90
 
 # ## Download Model
@@ -85,8 +77,30 @@ label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
 categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
 category_index = label_map_util.create_category_index(categories)
 
+# setup commandline argument parsing for input video and parameters
+def get_args():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-i", "--video", dest="in_file", default=DEFAULT_STREAM, type=str, help="filename of video to analyze")
+    ap.add_argument("-d", "--detection-cycle", dest="DETECTION_CYCLE", default=DETECTION_CYCLE, type=int, help="how often to run the detection algorithm")
+    ap.add_argument("-s", "--score-threshold", dest="MIN_SCORE_THRESH", default=MIN_SCORE_THRESH, type=int, help="minimum confidence needed to declare successful detection")
+    ap.add_argument("-a", "--association-buff", dest="UNTRACKED_THRESH", default=UNTRACKED_THRESH, type=int, help="number of detections to check before destroying a tracker")
+    ap.add_argument("-p", "--pixel-limit", dest="PIXEL_LIMIT", default=PIXEL_LIMIT, type=int, help="number of detections to check before destroying a tracker")
+    ap.add_argument("-z", "--im-zoom", dest="IM_ZOOM", default=IM_ZOOM, type=float, help="factor of image zoom")
+
+    args = ap.parse_args()
+    check_args(args)
+
+    return args
+
+# error checking arguments
+def check_args(args):
+    if args.in_file != DEFAULT_STREAM:
+        if not os.path.exists(args.in_file):
+            raise Exception("model file specified by --model-file does not exist.")
+    # TODO: should also check that all number arguments are positive numbers
+
 # detect object and return array of bbox tuples in format (x, y, w, h)
-def detect_and_get_bboxes(frame):
+def detect_and_get_bboxes(frame, min_score_thresh):
 
     # initialize for use outside loop
     bboxes = [] # array of bbox tuples in format (x, y, w, h)
@@ -98,8 +112,7 @@ def detect_and_get_bboxes(frame):
     # Each box represents a part of the image where a particular object was detected.
     boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
 
-    # Each score represents how level of confidence for each of the objects.
-    # Score is shown on the result image, together with the class label.
+    # Each score represents how level of confidence for each of the objects; Score is shown on the result image, together with the class label.
     scores = detection_graph.get_tensor_by_name('detection_scores:0')
     classes = detection_graph.get_tensor_by_name('detection_classes:0')
     num_detections = detection_graph.get_tensor_by_name('num_detections:0')
@@ -118,7 +131,7 @@ def detect_and_get_bboxes(frame):
 
         # grabbing all valid detection above confidence of min_score_thresh bboxes
         for i in range(boxes_squeezed.shape[0]):
-            if scores_squeezed[i] < MIN_SCORE_THRESH:
+            if scores_squeezed[i] < min_score_thresh:
                 break
             if classes_squeezed[i] == 1:
                 ymin, xmin, ymax, xmax = tuple(boxes_squeezed[i].tolist()) # values are normalized from 0 to 1
@@ -137,6 +150,7 @@ def detect_and_get_bboxes(frame):
         print("Failed to detect any objects. Moving onto next frame.")
         return (False, bboxes)
 
+# write data to CSV file
 def writeCSV(prev_time, prev_count, total_count):
     # WRITING TO CSV ================== MAKE SEPARATE FUNCTION
     current_time = time.time()
@@ -158,6 +172,7 @@ def writeCSV(prev_time, prev_count, total_count):
 
     return prev_time, prev_count
 
+# run hungarian algorithm
 def get_assignments(tracker_centers, detection_centers, m, association_limit):
     matrix = []
     limited_indexes = []
@@ -179,38 +194,97 @@ def get_assignments(tracker_centers, detection_centers, m, association_limit):
 
     return limited_indexes
 
+# re-run detection on video frame
+def run_detection(frame, pixel_limit, untracked_thresh, min_score_thresh):
+    # how many "new" people were found this time
+    count = 0
+
+    # get the valid detection's bounding boxes
+    detection_found, bboxes = detect_and_get_bboxes(frame, min_score_thresh)
+
+    detection_centers = []
+    old_centers = []
+
+    # get indexes of associated boxes
+    indexes = []
+    if (len(current_boxes) != 0 and len(bboxes) != 0):
+        # generate centers
+        for newbox in bboxes:
+            xmin, ymin, width, height = newbox[:]
+            center = (xmin + width/2, ymin + height/2)
+            detection_centers.append(center)
+        for box in current_boxes:
+            xmin, ymin, width, height = box[:]
+            center = (xmin + width/2, ymin + height/2)
+            old_centers.append(center)
+        indexes = get_assignments(old_centers, detection_centers, m, pixel_limit)
+
+    # the indexes of the matched pairs
+    valid_trackers = []
+    valid_detections = []
+    data_remove = []
+
+    for t,d in indexes:
+        valid_trackers.append(t)
+        valid_detections.append(d)
+
+    # remove all unmatched trackers
+    for i in range(0,len(current_boxes)):
+        if i not in valid_trackers:
+            untracked_cycles[current_boxes[i]] += 1
+            if untracked_cycles[current_boxes[i]] >= untracked_thresh:
+                data_remove.append(i)
+        else:
+            data_remove.append(i)
+            print("Found a match for " + str(i))
+
+    for i in reversed(data_remove):
+        current_boxes.remove(current_boxes[i])
+        print("Detection " + str(i) + " removed")
+
+    # add all unmatched detections
+    for i in range(0,len(bboxes)):
+        if i not in valid_detections:
+            count += 1
+        current_boxes.append(bboxes[i])
+        untracked_cycles[bboxes[i]] = 0
+        print("Box added: " + str(i))
+
+    return count
+
+def get_video_stream(in_file):
+    # Check if video is openable
+    video = cv2.VideoCapture(in_file)
+    if not video.isOpened():
+        print("Could not open video")
+        sys.exit()
+
+    # get size of video to scale down size
+    im_width = video.get(3)
+    im_height = video.get(4)
+    im_width = int(im_width * args.IM_ZOOM)
+    im_height = int(im_height * args.IM_ZOOM)
+
+    # Check if video is readable
+    ok, frame = video.read()
+    if not ok:
+        print('Cannot read video file')
+        sys.exit()
+
+    return video, im_width, im_height
+
+# main function
 if __name__ == '__main__' :
 
     # Hungarian Algorithm object
     m = Munkres()
 
-    # # TRACKER SETUP=============================================================
-
-    # Choose Tracker Type - Currently using KCF
-    tracker_types = ['BOOSTING', 'MIL','KCF', 'TLD', 'MEDIANFLOW', 'GOTURN']
-    tracker_type = tracker_types[2]
-
-    # # DETECTION ================================================================
-
+    # setup detection session
     detection_graph.as_default()
     sess = tf.Session(graph=detection_graph)
 
-    # setup commandline argument parsing for input video
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-i", "--video", help="filename of video to analyze")
-    ap.add_argument("-c", "--detection_cycle", default=20, help="how often to run the detection algorithm")
-    ap.add_argument("-t", "--threshold", default=0.5, help="minimum confidence needed to declare successful detection")
-    ap.add_argument("-b", "--tracking_buffer", default=20, help="number of frames to check before calling a detection successful/failure")
-    args = vars(ap.parse_args())
-
-# DETECTION_CYCLE = 20 # how often to run the detection algo
-# MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
-# TRACKING_BUFFER = 20
-
-    # if video is given, use as input, or if video isn't given, default to live stream
-    in_file = DEFAULT_STREAM
-    if args["video"]:
-        in_file = args["video"]
+    # get command line arguments
+    args = get_args()
 
     # Initializations for CSV
     prev_time = time.time()
@@ -223,23 +297,7 @@ if __name__ == '__main__' :
     counter = 0
     prev_count = 0
 
-    # Check if video is openable
-    video = cv2.VideoCapture(in_file)
-    if not video.isOpened():
-        print("Could not open video")
-        sys.exit()
-
-    # get size of video to scale down size
-    im_width = video.get(3)
-    im_height = video.get(4)
-    im_width = int(im_width*IM_ZOOM)
-    im_height = int(im_height*IM_ZOOM)
-
-    # Check if video is readable
-    ok, frame = video.read()
-    if not ok:
-        print('Cannot read video file')
-        sys.exit()
+    video, im_width, im_height = get_video_stream(args.in_file)
 
     # begin detection + tracking cycle
     with open(output_file, "w") as f:
@@ -258,121 +316,42 @@ if __name__ == '__main__' :
             # resize frame to view better
             frame = cv2.resize(frame, (im_width, im_height), interpolation = cv2.INTER_LINEAR)
 
-            # Re-do detectio every n-th frame
-            if frame_num % DETECTION_CYCLE == 0:
-
+            # Re-do detection every n-th frame
+            if frame_num % args.DETECTION_CYCLE == 0:
                 print(">>> Re-doing detection...")
+
                 ok, frame = video.read()
                 if not ok:
                     print('Cannot read video file')
                     sys.exit()
                 frame = cv2.resize(frame, (im_width, im_height), interpolation = cv2.INTER_LINEAR)
 
-                # get the valid detection's bounding boxes
-                detection_found, bboxes = detect_and_get_bboxes(frame)
+                counter += run_detection(frame, args.PIXEL_LIMIT, args.UNTRACKED_THRESH, args.MIN_SCORE_THRESH)
 
-                detection_centers = []
-                old_centers = []
-
-                # get indexes of associated boxes
-                indexes = []
-                if (len(current_boxes) != 0 and len(bboxes) != 0):
-                    # generate centers
-                    for newbox in bboxes:
-                        xmin, ymin, width, height = newbox[:]
-                        center = (xmin + width/2, ymin + height/2)
-                        detection_centers.append(center)
-                    for box in current_boxes:
-                        xmin, ymin, width, height = box[:]
-                        center = (xmin + width/2, ymin + height/2)
-                        old_centers.append(center)
-                    indexes = get_assignments(old_centers, detection_centers, m, PIXEL_LIMIT)
-
-                # the indexes of the matched pairs
-                valid_trackers = []
-                valid_detections = []
-                data_remove = []
-
-                for t,d in indexes:
-                    valid_trackers.append(t)
-                    valid_detections.append(d)
-
-                # remove all unmatched trackers
-                for i in range(0,len(current_boxes)):
-                    if i not in valid_trackers:
-                        untracked_cycles[current_boxes[i]] += 1
-                        if untracked_cycles[current_boxes[i]] >= UNTRACKED_THRESH:
-                            data_remove.append(i)
-                    else:
-                        data_remove.append(i)
-                        print("Found a match for " + str(i))
-                        #untracked_cycles[current_boxes[i]] = 0
-
-                for i in reversed(data_remove):
-                    current_boxes.remove(current_boxes[i])
-                    print("Detection " + str(i) + " removed")
-
-                # add all unmatched detections
-                for i in range(0,len(bboxes)):
-                    if i not in valid_detections:
-                        counter += 1
-                    current_boxes.append(bboxes[i])
-                    untracked_cycles[bboxes[i]] = 0
-                    print("Box added: " + str(i))
-
+            # Draw the boxes
             for box in current_boxes:
                 p1 = (int(box[0]), int(box[1]))
                 p2 = (int(box[0] + box[2]), int(box[1] + box[3]))
                 cv2.rectangle(frame, p1, p2, (255,0,0), 2, 1)
 
-            # # Start timer
-            # timer = cv2.getTickCount()
-
-            # # Update tracker
-            # current_boxes = []
-            # failed_trackers = []
-            # for tracker in multitracker:
-            #     ok, updated_box = tracker.update(frame)
-
-            #     # Draw bounding box
-            #     if ok:
-            #         # Tracking success
-            #         p1 = (int(updated_box[0]), int(updated_box[1]))
-            #         p2 = (int(updated_box[0] + updated_box[2]), int(updated_box[1] + updated_box[3]))
-            #         cv2.rectangle(frame, p1, p2, (255,0,0), 2, 1)
-
-            #         current_boxes.append((tracker, updated_box))
-
-            #         updates[tracker] += 1
-            #         if updates[tracker] == TRACKING_BUFFER:
-            #             counter += 1
-
-            #     else :
-            #         # Tracking failure
-            #         cv2.putText(frame, "Tracking failure detected", (100,80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2)
-            #         failed_trackers.append(tracker)
-
-            # print("Original Number of Trackers:", len(multitracker))
-            # fail_count = len(failed_trackers)
-
-            # # REMOVING TRACKERS BASED UPON KCF REPORTED TRACKING FAILURES
-            # if not fail_count == 0:
-            #     for bad_tracker in failed_trackers:
-            #         multitracker.remove(bad_tracker)
-            #         updates.pop(bad_tracker)
-            #     print(">>>", fail_count,"TRACKING FAILURES OCCURRED! Number of trackers after removal:", len(multitracker))
-
-            # Display tracker type and FPS on frame
-            cv2.putText(frame, tracker_type + " Tracker", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 170,50), 2);
-            cv2.putText(frame, "Total Pedestrians = " + str(counter), (50, im_height - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,0), 2);
+            # Display detection cycles, allowed unassociations, and total count of people on frame
+            cv2.putText(frame, str(args.DETECTION_CYCLE) + " Cycles Per Detection", (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
+            cv2.putText(frame, str(args.UNTRACKED_THRESH) + " Unassociations Allowed", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
+            cv2.putText(frame, "Total Pedestrians = " + str(counter), (50, im_height - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2);
 
             # Display result and write to CSV
-            cv2.imshow("Multi Object Tracking", frame)
+            cv2.imshow("Pedestrian Detection", frame)
             prev_time, prev_count = writeCSV(prev_time, prev_count, counter)
 
-            # Exit if ESC pressed
+            # Exit conditions
             k = cv2.waitKey(1) & 0xff
-            if k == 27 : break
+            if k == 27 : #ESC
+                cv2.destroyAllWindows()
+                break
+            if cv2.getWindowProperty("Pedestrian Detection", cv2.WND_PROP_VISIBLE) < 1: # X key on window
+                break
+
+    cv2.destroyAllWindows()
 
 
 print("RESULTS: " + str(counter) + " people were detected walking through the frame.")
