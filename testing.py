@@ -1,49 +1,90 @@
-import os
-import csv
 from subprocess import Popen, PIPE
+import numpy as np
+import math
+import os
+import six.moves.urllib as urllib
+import sys
+import tarfile
+import tensorflow as tf
+import zipfile
+import argparse
+import collections
+from collections import defaultdict
+from io import StringIO
 
-DATA_DIR = 'video_input'
-VIDEOS = ['IMG_1295.MOV', 'IMG_1296.MOV', 'IMG_0900.MOV']
+from PIL import Image
+from munkres import Munkres
 
-MIN_SCORE_THRESH = 0.6
-IM_ZOOM = 0.5
+import cv2
+import time
+import csv
+ 
+from object_detection.utils import label_map_util
+from object_detection.utils import visualization_utils as vis_util
 
-if not os.path.exists(DATA_DIR):
-    raise Exception('Data directory specified by DATA_DIR does not exist.')
+from detector_tracker import DetectorTracker
+import constants
 
-data_format = ["DETECTION_CYCLE", "TRACKING_BUFFER", "UNTRACKED_THRESH", "PIXEL_LIMIT", "FILE", "COUNT"]
-data_file = "data_output.csv"
+def setup():
+    # (major_ver, minor_ver, subminor_ver) = (cv2.__version__).split('.')
+    sys.path.append("..")
 
-def run_tests():
-    # setup detection session
-    detection_graph.as_default()
-    sess = tf.Session(graph=detection_graph)
+    # ## Download Model
+    opener = urllib.request.URLopener()
+    opener.retrieve(constants.DOWNLOAD_BASE + constants.MODEL_FILE, constants.MODEL_FILE)
+    tar_file = tarfile.open(constants.MODEL_FILE)
+    for file in tar_file.getmembers():
+        file_name = os.path.basename(file.name)
+        if 'frozen_inference_graph.pb' in file_name:
+            tar_file.extract(file, os.getcwd())
 
-    with open(data_file, "w") as f:
+    # ## Load a (frozen) Tensorflow model into memory.
+    detection_graph = tf.Graph()
+    with detection_graph.as_default():
+        od_graph_def = tf.GraphDef()
+        with tf.gfile.GFile(constants.PATH_TO_CKPT, 'rb') as fid:
+            serialized_graph = fid.read()
+            od_graph_def.ParseFromString(serialized_graph)
+            tf.import_graph_def(od_graph_def, name='')
+
+    # ## Loading label map
+    # Label maps map indices to category names, so that when our convolution network predicts `5`, we know that this corresponds to `airplane`.  Here we use internal utility functions, but anything that returns a dictionary mapping integers to appropriate string labels would be fine
+    label_map = label_map_util.load_labelmap(constants.PATH_TO_LABELS)
+    categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=constants.NUM_CLASSES, use_display_name=True)
+    category_index = label_map_util.create_category_index(categories) 
+
+    return detection_graph
+
+def run_tests(sess, detection_graph):
+    with open(constants.DATA_FILE, "w") as f:
         writer = csv.writer(f, delimiter=',')
-        writer.writerow('MIN_SCORE_THRESH = 0.6, IM_ZOOM = 0.5')
+        writer.writerow(['MIN_SCORE_THRESH = 0.6, IM_ZOOM = 0.5'])
+        writer.writerow(constants.DATA_FORMAT)
 
         for DETECTION_CYCLE in ['20', '10', '5']:
             for UNTRACKED_THRESH in ['10', '5', '3', '0']:
                 for PIXEL_LIMIT in ['150', '100', '80', '50']:
                     for TRACKING_BUFFER in ['100', '80', '50', '30', '10']:
-                        for in_file in VIDEOS:
-                            print('Running on %s for parameters --detection-cycle %s --score-threshold %s --tracking-buffer %s --association-buffer %s --pixel-limit %s --im-zoom %s' % (in_file, DETECTION_CYCLE, MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, IM_ZOOM))
-                            file_path = os.path.join(DATA_DIR, in_file)
+                        for in_file in constants.VIDEOS:
+                            print('Running on %s for parameters --detection-cycle %s --score-threshold %s --tracking-buffer %s --association-buffer %s --pixel-limit %s --im-zoom %s' % (in_file, DETECTION_CYCLE, constants.MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, constants.IM_ZOOM))
+                            file_path = os.path.join(constants.DATA_DIR, in_file)
 
-                            detector = DetectorTracker(sess, tuple(in_file, DETECTION_CYCLE, MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, IM_ZOOM))
-                            detector.begin_analysis()
+                            detector = DetectorTracker(sess, detection_graph, tuple([file_path, DETECTION_CYCLE, constants.MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, constants.IM_ZOOM]))
+                            detector.analyze()
                             count = detector.get_count()
 
-                            p = Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE, stdin=PIPE)
-                            output = p.stdout.readline().decode('ascii')
-                            print(output)
-
-                            newrow = [DETECTION_CYCLE, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, in_file, output]
+                            newrow = [DETECTION_CYCLE, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, in_file, count]
                             writer.writerow(newrow)
                             f.flush()
 
 # main function
 if __name__ == '__main__' :
-    run_tests()
+    detection_graph = setup()
+
+    # setup detection session
+    detection_graph.as_default()
+    sess = tf.Session(graph=detection_graph)
+
+    run_tests(sess, detection_graph)
     # end
+

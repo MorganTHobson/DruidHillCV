@@ -35,12 +35,15 @@ IM_ZOOM = 0.5
 DETECTION_CYCLE = 20 # how often to run the detection algo
 MIN_SCORE_THRESH = 0.5  # initialize minimum confidence needed to call an object detection successful
 UNTRACKED_THRESH = 3 # how many detection cycles to permit unassociated trackers
-PIXEL_LIMIT = 50     # allowed distance between associated trackers and detections
+PIXEL_LIMIT = 50     # max allowed distance between associated trackers and detections
 TRACKING_BUFFER = 20
-DEFAULT_STREAM = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
+HOPKINS_STREAM = "https://stream-us1-charlie.dropcam.com/nexus_aac/44919a623bdd4086901ce942a60dbd27/chunklist_w948281787.m3u8"
+DRUID_HILL_STREAM = "https://stream-us1-alfa.dropcam.com:443/nexus_aac/7838408781384ee7bd8d1cc11695f731/chunklist_w1479032407.m3u8"
+WRITE_INTERVAL = 10
 
 updates = {}
 untracked_cycles = {}
+stationary = {}
 
 # # TENSORFLOW OBJECT DETECTION MODEL PREPARATION (ONLINE TRAINING) =======================================================
 
@@ -83,7 +86,7 @@ category_index = label_map_util.create_category_index(categories)
 # setup commandline argument parsing for input video and parameters
 def get_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-i", "--video", dest="in_file", default=DEFAULT_STREAM, type=str, help="filename of video to analyze")
+    ap.add_argument("-i", "--video", required=True, dest="in_file", type=str, help="filename of video to analyze: hopkins for livestream 1, druidhill for livestream 2, otherwise enter path to filename")
     ap.add_argument("-d", "--detection-cycle", dest="DETECTION_CYCLE", default=DETECTION_CYCLE, type=int, help="how often to run the detection algorithm")
     ap.add_argument("-s", "--score-threshold", dest="MIN_SCORE_THRESH", default=MIN_SCORE_THRESH, type=float, help="minimum confidence needed to declare successful detection")
     ap.add_argument("-t", "--tracking-buff", dest="TRACKING_BUFFER", default=TRACKING_BUFFER, type=int, help="number of frames to check before calling a tracker successful (count increases)")
@@ -92,15 +95,20 @@ def get_args():
     ap.add_argument("-z", "--im-zoom", dest="IM_ZOOM", default=IM_ZOOM, type=float, help="factor of image zoom")
 
     args = ap.parse_args()
-    check_args(args)
+    check_args(args) # check that video input is valid
+
+    if args.in_file == 'hopkins':
+        args.in_file = HOPKINS_STREAM
+    elif args.in_file == 'druidhill':
+        args.in_file = DRUID_HILL_STREAM
 
     return args
 
 # error checking arguments
 def check_args(args):
-    if args.in_file != DEFAULT_STREAM:
+    if args.in_file != 'hopkins' and args.in_file != 'druidhill':
         if not os.path.exists(args.in_file):
-            raise Exception("model file specified by --model-file does not exist.")
+            raise Exception("video file specified by --video does not exist.")
     # TODO: should also check that all number arguments are positive numbers
 
 # detect object and return array of bbox tuples in format (x, y, w, h)
@@ -159,7 +167,7 @@ def writeCSV(prev_time, prev_count, total_count):
     # WRITING TO CSV ================== MAKE SEPARATE FUNCTION
     current_time = time.time()
     # every 3ish seconds write to csv
-    if current_time - prev_time > 3:
+    if current_time - prev_time > WRITE_INTERVAL:
         # local time parsing
         local_time = time.localtime()
         time_string = time.strftime("%Y-%m-%d %H:%M:%S EST", local_time)
@@ -197,6 +205,7 @@ def create_tracker(frame, bbox):
     ok = tracker.init(frame, bbox)
     updates[tracker] = 0
     untracked_cycles[tracker] = 0
+    stationary[tracker] = (0, (0,0))
 
     return tracker
 
@@ -277,6 +286,15 @@ def run_detection(frame, pixel_limit, untracked_thresh, min_score_thresh):
             multitracker.append(create_tracker(frame, bboxes[i]))
             print("Box added: " + str(i))
 
+# might become unnecessary - just compare the entire box might be better
+def get_centroid(bbox):
+    xmin, ymin, width, height = bbox[:]
+    box_size = width * height
+    box_center = (xmin + width/2, ymin + height/2)
+
+    return box_center
+
+
 def get_video_stream(in_file):
     # Check if video is openable
     video = cv2.VideoCapture(in_file)
@@ -324,6 +342,7 @@ if __name__ == '__main__' :
     frame_num = 0
     counter = 0
     prev_count = 0
+    name = "Druid Hill Project"
 
     video, im_width, im_height = get_video_stream(args.in_file)
 
@@ -352,6 +371,19 @@ if __name__ == '__main__' :
 
                 # Draw bounding box
                 if ok:
+                    # check centroid to see in same location - if it's been stationary, then eliminate
+                    # new_centroid = get_centroid(updated_box)
+                    # # TODO: threshold instead
+                    # num, pos = stationary[tracker]
+                    # if new_centroid == pos:
+                    #     num += 1
+                    #     if num == 3:
+                    #         failed_trackers.append(tracker)
+                    #     else:
+                    #         stationary[tracker] = (num, new_centroid)
+                    # else:
+                    #     stationary[tracker] = (num, new_centroid)
+
                     # Tracking success
                     p1 = (int(updated_box[0]), int(updated_box[1]))
                     p2 = (int(updated_box[0] + updated_box[2]), int(updated_box[1] + updated_box[3]))
@@ -385,9 +417,11 @@ if __name__ == '__main__' :
             cv2.putText(frame, str(args.DETECTION_CYCLE) + " Cycles Per Detection", (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
             cv2.putText(frame, str(args.UNTRACKED_THRESH) + " Unassociations Allowed", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (64,64,64), 2);
             cv2.putText(frame, "Total Pedestrians = " + str(counter), (50, im_height - 40), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255), 2);
-            
+
             # Display result and write to CSV
-            cv2.imshow("Pedestrian Detection and Tracking", frame)
+            cv2.namedWindow(name, cv2.WINDOW_NORMAL);
+            # cv2.setWindowProperty(name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN);
+            cv2.imshow(name, frame);
             prev_time, prev_count = writeCSV(prev_time, prev_count, counter)
 
             # Re-do detection every n-th frame
@@ -407,8 +441,9 @@ if __name__ == '__main__' :
             if k == 27 : #ESC
                 cv2.destroyAllWindows()
                 break
+            # if cv2.getWindowProperty("Pedestrian Detection and Tracking", cv2.WND_PROP_VISIBLE) < 1: # X key on window
+            #     break
 
     cv2.destroyAllWindows()
-
 
 print("RESULTS: " + str(counter) + " people were detected walking through the frame.")
