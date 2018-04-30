@@ -56,6 +56,9 @@ def setup():
     return detection_graph
 
 def run_tests(sess, detection_graph):
+    MIN_SCORE_THRESH = 0.6
+    IM_ZOOM = 0.5
+
     with open(constants.DATA_FILE, "w") as f:
         writer = csv.writer(f, delimiter=',')
         writer.writerow(['MIN_SCORE_THRESH = 0.6, IM_ZOOM = 0.5'])
@@ -66,10 +69,10 @@ def run_tests(sess, detection_graph):
                 for PIXEL_LIMIT in ['150', '100', '80', '50']:
                     for TRACKING_BUFFER in ['100', '80', '50', '30', '10']:
                         for in_file in constants.VIDEOS:
-                            print('Running on %s for parameters --detection-cycle %s --score-threshold %s --tracking-buffer %s --association-buffer %s --pixel-limit %s --im-zoom %s' % (in_file, DETECTION_CYCLE, constants.MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, constants.IM_ZOOM))
+                            print('Running on %s for parameters --detection-cycle %s --score-threshold %s --tracking-buffer %s --association-buffer %s --pixel-limit %s --im-zoom %s' % (in_file, DETECTION_CYCLE, MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, IM_ZOOM))
                             file_path = os.path.join(constants.DATA_DIR, in_file)
 
-                            detector = DetectorTracker(sess, detection_graph, tuple([file_path, DETECTION_CYCLE, constants.MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, constants.IM_ZOOM]))
+                            detector = DetectorTracker(sess, detection_graph, tuple([file_path, DETECTION_CYCLE, MIN_SCORE_THRESH, TRACKING_BUFFER, UNTRACKED_THRESH, PIXEL_LIMIT, IM_ZOOM]))
                             detector.analyze()
                             count = detector.get_count()
 
