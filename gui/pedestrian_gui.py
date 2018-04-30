@@ -11,19 +11,14 @@ import sys
 import time
 import csv
 
-# define time format and output header -> TODO: add GPS LOCATION 
-output = ["Time", "Type", "Direction", "Total"]
-#time.struct_time(tm_year=2014, tm_mon=2, tm_mday=20, tm_hour=23, tm_min=27, tm_sec=36, tm_wday=2, tm_yday=51, tm_isdst=0)
-
 # construct the argument parse and parse the arguments
 #ap = argparse.ArgumentParser()
 #ap.add_argument("-i", "--videos", required=True, help="video to analyze")
 #args = vars(ap.parse_args())
 
-SKIP_FRAMES = 10
-cap = cv2.VideoCapture('pedestrian_orig.mp4')
+cap = None
 
-def analyze_vid():
+def analyze_vid(video_name):
     output = ["Time", "Type", "Direction", "Total"]
     SKIP_FRAMES = 10
 
@@ -32,7 +27,7 @@ def analyze_vid():
     hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
     # Capture input from video
-    cap = cv2.VideoCapture('pedestrian_orig.mp4')
+    cap = cv2.VideoCapture(video_name)
     #csv_output = open("output.csv", "w")
     entrance = True 
 
@@ -96,13 +91,13 @@ def analyze_vid():
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-def destroy():
+
     cap.release()
     cv2.destroyAllWindows()
-    sys.exit()
-
-cap.release()
-cv2.destroyAllWindows()
+#def destroy():
+#    cap.release()
+#    cv2.destroyAllWindows()
+#    sys.exit()
 
 # write to csv
 #csv.close()

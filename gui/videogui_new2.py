@@ -14,14 +14,12 @@ import argparse
 import imutils
 import csv
 
-video_name = "pedestrian_orig.mp4"
-title = "Druid Project"
+video_name = "../video_input/IMG_1295.MOV"
+title = "Druid Hill Project"
 
 # define time format and output header -> TODO: add GPS LOCATION
 output = ["Time", "Type", "Direction", "Total"]
 SKIP_FRAMES = 10
-video_name = "pedestrian_orig.mp4"
-title = "Druid Project"
 
 class DruidGUI(object):
 
@@ -30,7 +28,7 @@ class DruidGUI(object):
         self.cap = cap
 
         master.title(title)
-        master.resizable(width=tk.FALSE, height=tk.FALSE)
+        master.resizable(width=tk.TRUE, height=tk.TRUE)
         master.geometry('1024x768')
         master.config(background="black")
 
@@ -94,7 +92,7 @@ class DruidGUI(object):
     def pedestrian_gui_analyze_vid(self):
         # print("gui analyze: not implemented yet")
         # pass
-        pedestrian_gui.analyze_vid
+        pedestrian_gui.analyze_vid(video_name)
 
     def pedestrian_gui_destroy(self):
         print("gui destroy: not implemented yet")

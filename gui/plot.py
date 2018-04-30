@@ -3,10 +3,11 @@ matplotlib.use('TKAgg')
 import matplotlib.pyplot as plt
 from matplotlib import animation as animation
 from matplotlib import dates as mdates
+from matplotlib.dates import  DateFormatter
 import numpy as np
 
-
 input_file = "tensor_output.csv"
+plt.style.use('ggplot')
 
 # set up for graph animation
 fig = plt.figure() 
@@ -18,12 +19,16 @@ def animate(i):
 
     ax1.clear()
     ax1.plot_date(datetime, y, 'g-')
+    ax1.xaxis_date()
+    ax1.xaxis.set_major_formatter( DateFormatter('%Y-%m-%d\n%H:%M:%S') )
+    plt.subplots_adjust(bottom=.3)
 
     locs, labels = plt.xticks()
-    plt.setp(labels, rotation=90)
-    plt.title("Pedestrian History Data")
-    plt.ylabel("# of Pedestrians in Park")
+    plt.setp(labels, rotation=70)
+    plt.title("Pedestrian Data")
+    plt.ylabel("# of Pedestrians In Park")
     plt.xlabel("Date Time")
+
     plt.tight_layout()
     plt.grid(True)
 
